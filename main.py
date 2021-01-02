@@ -4,17 +4,18 @@ from fastapi.responses import HTMLResponse
 from dependencies import get_user
 from services import annotations, atlas, datasets, image_query, image_transfer, kv, users
 
-app = FastAPI(dependencies=[Depends(get_user)])
-#app = FastAPI()
+app = FastAPI()
 
-app.include_router(annotations.router)
-app.include_router(atlas.router)
-app.include_router(datasets.router)
-app.include_router(image_query.router)
-app.include_router(image_transfer.router)
+# require user authorization for any of the actual data API calls
+app.include_router(annotations.router, dependencies=[Depends(get_user)])
+app.include_router(atlas.router, dependencies=[Depends(get_user)])
+app.include_router(datasets.router, dependencies=[Depends(get_user)])
+app.include_router(image_query.router, dependencies=[Depends(get_user)])
+app.include_router(image_transfer.router, dependencies=[Depends(get_user)])
 #app.include_router(users.router)
 #app.include_router(kv.router)
 
+# allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)
 async def root():
     return """

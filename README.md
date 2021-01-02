@@ -34,8 +34,8 @@ Run Locally with Buildpacks & Docker:
 * Install docker
 * Modify required environment variables (see below)
 ```
-pack build --builder=gcr.io/buildpacks/builder sample-python
-docker run -it -ePORT=8080 -p8080:8080 sample-python
+pack build --builder=gcr.io/buildpacks/builder clio-store
+docker run -it -ePORT=8000 -p8000:8000 clio-store
 ```
 
 Run on Cloud Run:
@@ -50,8 +50,11 @@ through environment variables.  Here is a list of variables:
 GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.
 
 OWNER: the email address of a user that automatically gets admin privileges.
+
 SIG_BUCKET: the GCS bucket specifier for the dataset signatures.
+
 TRANSFER_FUNC: the transfer network cloud run location.
+
 TRANSFER_DEST: the transfer network cache location.
 
 TEST_USER: if set to an email, HTTP API will work as if given user was logged in.
@@ -119,6 +122,25 @@ Get annotations:
 Delete annotations (only one at a time):
 
 	curl -X  DELETE -H "Content-Type: application/json" https://my-api-endpoint/annotations/mb20?x=50\&y=30\&z=50
+
+### Saved Searches
+
+Saved searches are stored in a dictionary where the key is a unique x_y_z string and the value is 
+whatever dictionary ayload that is provided by the application.  Saved searches are unique per 
+dataset.  Saved searches  retrieval returns every search, so this is not designed for 10s of 
+thousands of saved searches  In the example below, "mb20" is the name of the dataset.
+
+Post saved search (only one at a time, will overwrite pre-existing):
+
+	% curl -X  POST -H "Content-Type: application/json"  https://my-api-endpoint/savedsearches/mb20?x=50\&y=30\&z=50 -d '{"foo": "bar"}'
+
+Get saved searches:
+
+	% curl -X GET -H "Content-Type: application/json"  https://my-api-endpoint/savedsearches/mb20
+
+Delete saved search (only one at a time):
+
+	curl -X  DELETE -H "Content-Type: application/json"  https://my-api-endpoint/savedsearches/mb20?x=50\&y=30\&z=50
 
 ### Atlas
 

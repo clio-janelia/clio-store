@@ -2,7 +2,7 @@ from fastapi import Depends, FastAPI
 from fastapi.responses import HTMLResponse
 
 from dependencies import get_user
-from services import annotations, atlas, datasets, image_query, image_transfer, kv, users
+from services import annotations, atlas, datasets, image_query, image_transfer, kv, savedsearches
 
 app = FastAPI()
 
@@ -13,6 +13,7 @@ app.include_router(datasets.router, dependencies=[Depends(get_user)])
 app.include_router(image_query.router, dependencies=[Depends(get_user)])
 app.include_router(image_transfer.router, dependencies=[Depends(get_user)])
 app.include_router(kv.router, dependencies=[Depends(get_user)])
+app.include_router(savedsearches.router, dependencies=[Depends(get_user)])
 #app.include_router(users.router)
 
 # allow unauthenticated to access root documentation

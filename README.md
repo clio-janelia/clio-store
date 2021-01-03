@@ -45,7 +45,10 @@ Run on Cloud Run:
 ## Environment variables 
 
 Configuration of an owner email, storage specifications, and other variables is handled
-through environment variables.  Here is a list of variables:
+through environment variables.  These can be set for Cloud Run services through the
+[console, command line, or YAML file](https://cloud.google.com/run/docs/configuring/environment-variables#console).
+
+Here is a list of variables:
 
 OWNER: the email address of a user that automatically gets admin privileges.
 

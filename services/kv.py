@@ -57,7 +57,7 @@ async def post_kv(dataset: str, scope: str, key: str, payload: dict, user: User 
 async def delete_kv(dataset:str, scope: str, key: str, user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
-        value = collection.document(key).delete()
+        collection.document(key).delete()
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in deleting key-value for key {key} in dataset {dataset}, scope {scope}")

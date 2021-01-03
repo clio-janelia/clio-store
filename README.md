@@ -47,9 +47,6 @@ Run on Cloud Run:
 Configuration of an owner email, storage specifications, and other variables is handled
 through environment variables.  Here is a list of variables:
 
-GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services if running
-locally.
-
 OWNER: the email address of a user that automatically gets admin privileges.
 
 SIG_BUCKET: the GCS bucket specifier for the dataset signatures.
@@ -57,6 +54,10 @@ SIG_BUCKET: the GCS bucket specifier for the dataset signatures.
 TRANSFER_FUNC: the transfer network cloud run location.
 
 TRANSFER_DEST: the transfer network cache location.
+
+### Used during local testing or use outside of Cloud Run / Cloud Functions
+
+GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.
 
 TEST_USER: if set to an email, HTTP API will work as if given user was logged in.
 
@@ -73,6 +74,20 @@ are welcome to define custom roles or granularity at the dataset or global level
 
 For now, a token is validated on Google for each invocation but future work involves creating
 a JWT, which might be necessary for some low-latency use cases.
+
+## Adding services
+
+New endpoints can be added by (1) creating new modules in /services and then (2) linking
+the endpoint router into the main server in /main.py.
+
+# Debugging
+
+You can use IDEs to debug the server locally, complete with stepping through running code
+and examining the stack.  See [Fast API's documentation](https://fastapi.tiangolo.com/tutorial/debugging/#run-your-code-with-your-debugger)
+on how to debug using Visual Studio Code and Pycharm.  Note that environment variables are
+inherited when launching Visual Studio Code, so if there are authentication/authorization
+issues, make sure GOOGLE_APPLICATION_CREDENTIALS is set in the shell where your IDE is
+launched.
 
 ## API
 

@@ -42,7 +42,7 @@ Run on Cloud Run:
 
 [![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
 
-### Environment variables 
+## Environment variables 
 
 Configuration of an owner email, storage specifications, and other variables is handled
 through environment variables.  Here is a list of variables:
@@ -80,7 +80,7 @@ a JWT, which might be necessary for some low-latency use cases.
 New endpoints can be added by (1) creating new modules in /services and then (2) linking
 the endpoint router into the main server in /main.py.
 
-# Debugging
+## Debugging
 
 You can use IDEs to debug the server locally, complete with stepping through running code
 and examining the stack.  See [Fast API's documentation](https://fastapi.tiangolo.com/tutorial/debugging/#run-your-code-with-your-debugger)

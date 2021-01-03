@@ -67,7 +67,7 @@ class User(BaseModel):
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
-async def get_user_from_token(token: str = Depends(oauth2_scheme)):
+async def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -97,7 +97,7 @@ async def get_user(current_user: User = Depends(get_user_from_token)):
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 
-def get_user_from_store(email: str, email_verified: bool=False, dataset: str=""):
+def get_user_from_store(email: str, email_verified: bool=False, dataset: str="") -> User:
     """Check google token and return user roles.
     """
     global __USER_CACHE__

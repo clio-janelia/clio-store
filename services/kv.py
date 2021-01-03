@@ -28,14 +28,18 @@ async def get_kv(dataset:str, scope: str, key: str, user: User = Depends(get_use
 
 @router.get('/{dataset}/{scope}')
 @router.get('/{dataset}/{scope}/', include_in_schema=False)
-async def get_kv_all(dataset:str, scope: str, user: User = Depends(get_user)):
+async def get_kv_all(dataset:str, scope: str, user: User = Depends(get_user)) -> dict:
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         kvs = collection.get()
+        kvs_out = {}
+        for kv in kvs:
+            value = kv.to_dict()
+            kvs_out[kv.id] = value
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving key-values for dataset {dataset}, scope {scope}")
-    return kvs.to_dict()
+    return kvs_out
 
 @router.post('/{dataset}/{scope}/{key}')
 @router.post('/{dataset}/{scope}/{key}/', include_in_schema=False)

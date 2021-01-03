@@ -12,8 +12,8 @@ app.include_router(atlas.router, dependencies=[Depends(get_user)])
 app.include_router(datasets.router, dependencies=[Depends(get_user)])
 app.include_router(image_query.router, dependencies=[Depends(get_user)])
 app.include_router(image_transfer.router, dependencies=[Depends(get_user)])
+app.include_router(kv.router, dependencies=[Depends(get_user)])
 #app.include_router(users.router)
-#app.include_router(kv.router)
 
 # allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)

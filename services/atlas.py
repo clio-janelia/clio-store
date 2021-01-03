@@ -34,8 +34,8 @@ router = APIRouter(
 #     description: str
 
 
-@router.get('/{dataset}', response_model=Dict[AnyStr, Any])
-@router.get('/{dataset}/', include_in_schema=False, response_model=Dict[AnyStr, Any])
+@router.get('/{dataset}', response_model=dict)
+@router.get('/{dataset}/', include_in_schema=False, response_model=dict)
 async def get_atlas(dataset: str, user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
@@ -56,7 +56,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def post_atlas(dataset: str, x: int, y: int, z: int, payload: Dict[AnyStr, Any], user: User = Depends(get_user)):
+async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     if "title" not in payload or "description" not in payload:
         raise HTTPException(status_code=400, detail=f"POSTed object must include 'title' and 'description' properties")
     try:

@@ -47,7 +47,8 @@ Run on Cloud Run:
 Configuration of an owner email, storage specifications, and other variables is handled
 through environment variables.  Here is a list of variables:
 
-GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.
+GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services if running
+locally.
 
 OWNER: the email address of a user that automatically gets admin privileges.
 

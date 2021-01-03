@@ -2,8 +2,8 @@ from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
 from dependencies import get_user
-from dependencies import Dataset, User
-from pydantic.typing import List, Dict
+from dependencies import User
+from pydantic.typing import List
 
 from google.cloud import firestore
 from google.cloud import storage

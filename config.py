@@ -19,3 +19,6 @@ CLIO_ANNOTATIONS = "clio_annotations"
 
 # firestore saved searches collection name
 CLIO_SAVEDSEARCHES = "clio_savedsearches"
+
+# firestore keyvalue
+CLIO_KEYVALUE = "clio_keyvalue"

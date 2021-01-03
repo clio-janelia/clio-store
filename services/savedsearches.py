@@ -33,7 +33,7 @@ async def get_searches(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def searches(dataset: str, x: int, y: int, z: int, payload: Dict[AnyStr, Any], user: User = Depends(get_user)):
+async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     try:
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset

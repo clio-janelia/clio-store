@@ -3,7 +3,6 @@ import time
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any, AnyStr
 
 from dependencies import get_user, User
 from stores import firestore
@@ -33,7 +32,7 @@ async def get_annotations(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def post_annotations(dataset: str, x: int, y: int, z: int, payload: Dict[AnyStr, Any], user: User = Depends(get_user)):
+async def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     try:        
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset

@@ -129,6 +129,8 @@ class DatasetCache(BaseModel):
 def public_dataset(user: User, dataset_id: str) -> bool:
     """Returns True if the given dataset is public"""
     dataset = __DATASET_CACHE__.get_dataset(user, dataset_id)
+    if dataset.public is None:
+        return False
     return dataset.public
 
 # cache everything initially on startup of service

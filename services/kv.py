@@ -10,7 +10,7 @@ from dependencies import get_user, User
 from stores import firestore
 
 router = APIRouter(
-    prefix="/kv"
+    prefix=f"{URL_PREFIX}/kv"
 )
 
 @router.get('/{dataset}/{scope}/{key}')

@@ -1,5 +1,8 @@
 import os
 
+# Prefix to add before the actual API endpoints
+URL_PREFIX = os.environ.get("URL_PREFIX", "")
+
 # if OWNER email env var is set, the email automatically gets global "admin" privileges
 OWNER = os.environ.get("OWNER", None)
 

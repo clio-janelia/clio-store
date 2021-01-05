@@ -9,7 +9,7 @@ from google.cloud import firestore
 from google.cloud import storage
 
 router = APIRouter(
-    prefix="/datasets"
+    prefix=f"{URL_PREFIX}/datasets"
 )
 
 @router.post('')

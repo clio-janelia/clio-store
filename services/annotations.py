@@ -8,7 +8,7 @@ from dependencies import get_user, User
 from stores import firestore
 
 router = APIRouter(
-    prefix="/annotations"
+    prefix=f"{URL_PREFIX}/annotations"
 )
 
 @router.get('/{dataset}')

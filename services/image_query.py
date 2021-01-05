@@ -8,6 +8,8 @@ from dependencies import User
 from google.cloud import storage
 from google.cloud import bigquery
 
+from config import *
+
 
 # constants for signature search
 SIG_BUCKET = os.environ.get("SIG_BUCKET", None)
@@ -16,7 +18,7 @@ SIG_DATASET_SUFFIX = "_imgsearch"
 MAX_DISTANCE = 100 # 100 pixels (TODO: make dynamic)
 
 router = APIRouter(
-    prefix="/signatures"
+    prefix=f"{URL_PREFIX}/signatures"
 )
 
 @router.get('/atlocation/{dataset}')

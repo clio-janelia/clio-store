@@ -9,7 +9,7 @@ from dependencies import get_user, User, public_dataset
 from stores import firestore
 
 router = APIRouter(
-    prefix="/atlas"
+    prefix=f"{URL_PREFIX}/atlas"
 )
 
 # TODO -- figure out how to allow general JSON in class but with

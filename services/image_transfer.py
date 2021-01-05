@@ -20,7 +20,7 @@ TRANSFER_FUNC = os.environ.get("TRANSFER_FUNC", None)
 TRANSFER_DEST = os.environ.get("TRANSFER_DEST", None)
 
 router = APIRouter(
-    prefix="/transfer"
+    prefix=f"{URL_PREFIX}/transfer"
 )
 
 @router.post('/')

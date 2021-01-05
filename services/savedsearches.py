@@ -9,7 +9,7 @@ from dependencies import get_user, User
 from stores import firestore
 
 router = APIRouter(
-    prefix="/savedsearches"
+    prefix=f"{URL_PREFIX}/savedsearches"
 )
 
 # TODO -- Create pydantic response model so shows up in OpenAPI docs. 

@@ -89,8 +89,6 @@ class UserCache(BaseModel):
             user = self.refresh_user(user_ref)
         return user
 
-
-
 class Dataset(BaseModel):
     description: str
     location: str
@@ -131,6 +129,7 @@ class DatasetCache(BaseModel):
 def public_dataset(user: User, dataset_id: str) -> bool:
     """Returns True if the given dataset is public"""
     dataset = __DATASET_CACHE__.get_dataset(user, dataset_id)
+    return dataset.public
 
 # cache everything initially on startup of service
 __DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))

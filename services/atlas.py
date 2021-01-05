@@ -3,9 +3,9 @@ import time
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import Dict, Any, AnyStr
+from typing import Dict, List, Any, AnyStr, Union
 
-from dependencies import get_user, User
+from dependencies import get_user, User, public_dataset
 from stores import firestore
 
 router = APIRouter(
@@ -32,21 +32,36 @@ router = APIRouter(
 # class AtlasPayload(BaseModel):
 #     title: str
 #     description: str
+#     payload: Optional[dict]
 
 
-@router.get('/{dataset}', response_model=dict)
-@router.get('/{dataset}/', include_in_schema=False, response_model=dict)
+#TODO
+@router.get('/{dataset}', response_model=Union[Dict, List])
+@router.get('/{dataset}/', include_in_schema=False, response_model=Union[Dict, List])
 async def get_atlas(dataset: str, user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
-        annotations = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
-        output = {}
-        for annotation in annotations:
-            res = annotation.to_dict()
-            res["id"] = annotation.id
-            output[res["locationkey"]] = res
-        print(f"user {user}: {output}")
-        return output
+        if dataset != "all":
+            annotations = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
+            output = {}
+            for annotation in annotations:
+                res = annotation.to_dict()
+                res["id"] = annotation.id
+                output[res["locationkey"]] = res
+            return output
+        else:
+            annotations = collection.get()
+            output = []
+            for annotation in annotations:
+                res = annotation.to_dict()
+                res["id"] = annotation.id
+                if public_dataset(user, res["dataset"]) or user.has_role("clio_general", dataset):
+                    if res["verified"] or res["email"] == user.email:
+                        output.append(res)
+                    elif user.has_role("clio_write", dataset):
+                        output.append(res)
+            return output
+
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving atlas for dataset {dataset}")

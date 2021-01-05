@@ -1,5 +1,5 @@
 from google.cloud import firestore
-from pydantic.typing import List
+from pydantic.typing import List, Union
 
 db = firestore.Client()
 

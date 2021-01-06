@@ -80,6 +80,7 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
         payload["location"] = [x, y, z]
         payload["locationkey"] = f"{x}_{y}_{z}"
         payload["email"] = user.email
+        payload["verified"] = False
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
         collection.document().set(payload)
     except Exception as e:

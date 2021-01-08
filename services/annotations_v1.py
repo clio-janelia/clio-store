@@ -7,9 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from dependencies import get_user, User
 from stores import firestore
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/annotations"
-)
+router = APIRouter()
 
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)

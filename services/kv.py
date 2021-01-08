@@ -9,9 +9,7 @@ from typing import Dict, Any, AnyStr, Optional
 from dependencies import get_user, User
 from stores import firestore
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/kv"
-)
+router = APIRouter()
 
 @router.get('/{dataset}/{scope}/{key}')
 @router.get('/{dataset}/{scope}/{key}/', include_in_schema=False)

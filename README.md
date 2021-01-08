@@ -239,12 +239,12 @@ Find matching points for a signature near a given point:
 
 Admins and the owner can retrieve a list of users, update roles and add new users, and delete users.
 
-Clio supports a list of roles at a global level "clio_global" or per dataset under the "datasets" object.
+Clio supports a list of roles at a global level "global_roles" or per dataset under the "datasets" object.
 Cli
 
 Add new user(s) or update roles (roles must be a list):
 	
-	% curl -X POST -H "Content-Type: application/json" https://my-api-endpoint/users -d '{"foobar@gmail.com": {"clio_global": ["admin", "clio_general" ]}, "datasets": {"hemibrain": ["clio_write"]}}'
+	% curl -X POST -H "Content-Type: application/json" https://my-api-endpoint/users -d '{"foobar@gmail.com": {"global_roles": ["admin", "clio_general" ]}, "datasets": {"hemibrain": ["clio_write"]}}'
 
 Remove user(s):
 	

@@ -14,7 +14,6 @@ from stores import firestore
 from config import *
 
 __DATASET_CACHE__ = None
-__USER_CACHE__ = None
 
 # reloads User and Dataset info from DB after this many seconds
 USER_REFRESH_SECS = 600.0
@@ -27,11 +26,10 @@ class Layer(BaseModel):
 
 class User(BaseModel):
     email: str
-    email_verified: bool = False
+    # email_verified: bool = False
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
-    updated: float = time.time()
 
     def has_role(self, role, dataset: str) -> bool:
         if role in self.global_roles:
@@ -60,28 +58,37 @@ class User(BaseModel):
 class UserCache(BaseModel):
     collection: Any
     cache: Dict[str, User] = {}
+    updated: Dict[str, float] = {} # per user update time
+
+    def cache_user(self, user: User):
+        self.updated[user.email] = time.time()
+        if user.email == OWNER:
+            user.global_roles.add("admin")
+        self.cache[user.email] = user
+
+    def uncache_user(self, email: str):
+        if email in self.cache:
+            del self.cache[email]
 
     def refresh_user(self, user_ref) -> User:
         user_dict = user_ref.to_dict()
         user_dict["email"] = user_ref.id
-        if "clio_global" in user_dict:
-            user_dict["global_roles"] = user_dict["clio_global"]
+        user_dict["global_roles"] = user_dict.get("clio_global", set())
         user_obj = User(**user_dict)
-        user_obj.updated = time.time()
-        if user_obj.email == OWNER:
-            user_obj.global_roles.add("admin")
-        self.cache[user_obj.email] = user_obj
+        self.cache_user(user_obj)
         return user_obj
 
-    def refresh_cache(self):
+    def refresh_cache(self) -> Dict[str, User]:
+        users = {}
         for user_ref in self.collection.get():
-            self.refresh_user(user_ref)
+            users[user_ref.id] = self.refresh_user(user_ref)
         print(f"Cached {len(self.cache)} user metadata.")
+        return users
 
     def get_user(self, email: str) -> User:
         user = self.cache.get(email)
         if user is not None:
-            age = time.time() - user.updated
+            age = time.time() - self.updated.get(email, 0)
             if age > USER_REFRESH_SECS:
                 user = None
         if user is None:
@@ -96,9 +103,9 @@ class Dataset(BaseModel):
     layers: Optional[List[Layer]] = [] 
 
 class DatasetCache(BaseModel):
-    updated: float = time.time()
     collection: Any
     cache: Dict[str, Dataset] = {}
+    updated: float = time.time() # update time for all datasets
 
     def refresh_cache(self):
         datasets = self.collection.get()
@@ -137,15 +144,15 @@ def public_dataset(user: User, dataset_id: str) -> bool:
 __DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
 __DATASET_CACHE__.refresh_cache()
 
-__USER_CACHE__ = UserCache(collection = firestore.get_collection([CLIO_USERS]))
-__USER_CACHE__.refresh_cache()
-
+users = UserCache(collection = firestore.get_collection([CLIO_USERS]))
+users.refresh_cache()
 
 # handle OAuth2
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 async def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
+    """Check google token and return user roles and data."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
@@ -163,7 +170,7 @@ async def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
         else:
             raise credentials_exception
 
-    user = get_user_from_store(email)
+    user = users.get_user(email)
     if user is None:
         raise credentials_exception
     return user
@@ -172,8 +179,4 @@ async def get_user(current_user: User = Depends(get_user_from_token)):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
-
-def get_user_from_store(email: str) -> User:
-    """Check google token and return user roles and data."""
-    return __USER_CACHE__.get_user(email)
 

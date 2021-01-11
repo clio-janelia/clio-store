@@ -8,9 +8,7 @@ from pydantic.typing import List
 from google.cloud import firestore
 from google.cloud import storage
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/datasets"
-)
+router = APIRouter()
 
 @router.post('')
 @router.post('/', include_in_schema=False)

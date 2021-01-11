@@ -17,9 +17,7 @@ SIG_CACHE = None # dataset to meta data cache for signature image search
 SIG_DATASET_SUFFIX = "_imgsearch"
 MAX_DISTANCE = 100 # 100 pixels (TODO: make dynamic)
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/signatures"
-)
+router = APIRouter()
 
 @router.get('/atlocation/{dataset}')
 async def at_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):

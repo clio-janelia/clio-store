@@ -19,9 +19,7 @@ from google.cloud import storage
 TRANSFER_FUNC = os.environ.get("TRANSFER_FUNC", None)
 TRANSFER_DEST = os.environ.get("TRANSFER_DEST", None)
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/transfer"
-)
+router = APIRouter()
 
 @router.post('/')
 async def transfer(jsondata, current_user: User = Depends(get_user)):

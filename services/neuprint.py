@@ -10,9 +10,7 @@ NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
 # neuprint address (TODO: move configuration to be in the dataset)
 NEUPRINT_URL="https://neuprint.janelia.org/api/custom/custom"
 
-router = APIRouter(
-    prefix=f"{URL_PREFIX}/neuprint"
-)
+router = APIRouter()
 
 # create a persistent session for this service
 client_session = aiohttp.ClientSession()

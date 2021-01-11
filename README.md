@@ -60,6 +60,8 @@ TRANSFER_FUNC: the transfer network cloud run location.
 
 TRANSFER_DEST: the transfer network cache location.
 
+NEUPRINT_APPLICATION_CREDENTIALS: credentials to access neuprint
+
 ### Used during local testing or use outside of Cloud Run / Cloud Functions
 
 GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.

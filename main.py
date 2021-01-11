@@ -1,15 +1,14 @@
-from fastapi import Depends, FastAPI
+from fastapi import Depends
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
 
-from dependencies import get_user
-from services import annotations, atlas, datasets, image_query, image_transfer, kv, savedsearches
-
-app = FastAPI()
+from dependencies import get_user, app
+from services import annotations, atlas, datasets, image_query, image_transfer, kv, savedsearches, neuprint
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
 app.include_router(annotations.router, dependencies=[Depends(get_user)])
+app.include_router(neuprint.router, dependencies=[Depends(get_user)])
 app.include_router(atlas.router, dependencies=[Depends(get_user)])
 app.include_router(datasets.router, dependencies=[Depends(get_user)])
 app.include_router(image_query.router, dependencies=[Depends(get_user)])

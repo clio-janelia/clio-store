@@ -1,6 +1,6 @@
 import time
 
-from fastapi import Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 
 from google.auth.transport import requests
@@ -14,6 +14,9 @@ from stores import firestore
 from config import *
 
 __DATASET_CACHE__ = None
+
+# stores reference to global APP
+app = FastAPI()
 
 # reloads User and Dataset info from DB after this many seconds
 USER_REFRESH_SECS = 600.0

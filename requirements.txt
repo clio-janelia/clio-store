@@ -34,3 +34,4 @@ typing-extensions==3.7.4.3
 urllib3==1.26.2
 uvicorn==0.13.1
 Werkzeug==1.0.1
+aiohttp==3.7.3

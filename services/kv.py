@@ -13,6 +13,8 @@ router = APIRouter()
 @router.get('/{dataset}/{scope}/{key}')
 @router.get('/{dataset}/{scope}/{key}/', include_in_schema=False)
 async def get_kv(dataset:str, scope: str, key: str, timestamp: bool = False, user: User = Depends(get_user)):
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read key-values in dataset {dataset}")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         value_ref = collection.document(key).get()
@@ -29,6 +31,8 @@ async def get_kv(dataset:str, scope: str, key: str, timestamp: bool = False, use
 @router.get('/{dataset}/{scope}')
 @router.get('/{dataset}/{scope}/', include_in_schema=False)
 async def get_kv_all(dataset:str, scope: str, timestamp: bool = False, user: User = Depends(get_user)) -> dict:
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read key-values in dataset {dataset}")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         kvs = collection.get()
@@ -46,6 +50,8 @@ async def get_kv_all(dataset:str, scope: str, timestamp: bool = False, user: Use
 @router.post('/{dataset}/{scope}/{key}')
 @router.post('/{dataset}/{scope}/{key}/', include_in_schema=False)
 async def post_kv(dataset: str, scope: str, key: str, payload: dict, user: User = Depends(get_user)):
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to write key-values in dataset {dataset}")
     try:        
         payload["_timestamp"] = time.time()
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
@@ -57,6 +63,8 @@ async def post_kv(dataset: str, scope: str, key: str, payload: dict, user: User 
 @router.delete('/{dataset}/{scope}/{key}')
 @router.delete('/{dataset}/{scope}/{key}/', include_in_schema=False)
 async def delete_kv(dataset:str, scope: str, key: str, user: User = Depends(get_user)):
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to delete key-values in dataset {dataset}")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         collection.document(key).delete()

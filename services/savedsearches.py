@@ -5,7 +5,7 @@ from config import *
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, AnyStr
 
-from dependencies import get_user, User
+from dependencies import public_dataset, get_user, User
 from stores import firestore
 
 router = APIRouter()
@@ -14,6 +14,8 @@ router = APIRouter()
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)
 async def get_searches(dataset: str, user: User = Depends(get_user)):
+    if not user.has_role("clio_general", dataset):
+        raise HTTPException(status_code=401, detail=f"user does not have permission to read dataset {dataset_id}")
     try:
         collection = firestore.get_collection([CLIO_SAVEDSEARCHES, "USER", "searches"])
         searches = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
@@ -32,6 +34,8 @@ async def get_searches(dataset: str, user: User = Depends(get_user)):
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
 async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
+    if not user.has_role("clio_general", dataset):
+        raise HTTPException(status_code=401, detail=f"user does not have permission to write searches to dataset {dataset_id}")
     try:
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset
@@ -47,6 +51,8 @@ async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: Us
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)
 async def delete_searches(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
+    if not user.has_role("clio_general", dataset):
+        raise HTTPException(status_code=401, detail=f"user does not have permission to delete searches in dataset {dataset_id}")
     try:
         # delete only supported from interface
         # (delete by dataset + user name + xyz)

@@ -1,8 +1,7 @@
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import get_user
-from dependencies import User
+from dependencies import public_dataset, get_user, User
 from pydantic.typing import List
 
 from google.cloud import firestore
@@ -46,7 +45,7 @@ async def get_datasets(current_user: User = Depends(get_user)):
         datasets_out = {}
         for dataset in datasets:
             dataset_info = dataset.to_dict()
-            if current_user.can_read(dataset.id):
+            if public_dataset(dataset.id) or current_user.can_read(dataset.id):
                 datasets_out[dataset.id] = dataset_info
         return datasets_out
     except Exception as e:

@@ -4,7 +4,7 @@ from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
 
-from dependencies import get_user, User
+from dependencies import public_dataset, get_user, User
 from stores import firestore
 
 router = APIRouter()
@@ -12,6 +12,8 @@ router = APIRouter()
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)
 async def get_annotations(dataset: str, user: User = Depends(get_user)):
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "USER", "annotations"])
         annotations = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
@@ -31,6 +33,8 @@ async def get_annotations(dataset: str, user: User = Depends(get_user)):
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
 async def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to write annotations on dataset {dataset}")
     try:        
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset
@@ -46,6 +50,8 @@ async def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, 
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)
 async def delete_annotation(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to delete annotations on dataset {dataset}")
     try:
         # delete only supported from interface
         # (delete by dataset + user name + xyz)

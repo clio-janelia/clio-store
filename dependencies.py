@@ -23,6 +23,57 @@ class Layer(BaseModel):
     name: str      # Example: "segmentation-v1.2"
     location: str  # Example: "gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation"
 
+class Dataset(BaseModel):
+    description: str
+    location: str
+    public: Optional[bool] = False
+    layers: Optional[List[Layer]] = [] 
+
+class DatasetCache(BaseModel):
+    collection: Any
+    cache: Dict[str, Dataset] = {}
+    public_datasets: Set[str] = set()
+    updated: float = time.time() # update time for all dataset
+
+    def refresh_cache(self):
+        datasets = self.collection.get()
+        for dataset_ref in datasets:
+            dataset_dict = dataset_ref.to_dict()
+            dataset_obj = Dataset(**dataset_dict)
+            self.cache[dataset_ref.id] = dataset_obj
+            if dataset_obj.public:
+                self.public_datasets.add(dataset_ref.id)
+        self.updated = time.time()
+        print(f"Cached {len(self.cache)} dataset metadata.")
+
+    def get_dataset(self, dataset_id: str) -> Dataset:
+        """Returns dataset information."""
+        age = time.time() - self.updated
+        if age > DATASET_REFRESH_SECS:
+            print(f"dataset cache last checked {age} secs ago... refreshing")
+            self.refresh_cache()
+
+        if dataset_id not in self.cache:
+            raise HTTPException(status_code=404, detail=f"dataset {dataset_id} not found")    
+
+        return self.cache[dataset_id]    
+
+    def is_public(self, dataset_id: str) -> bool:
+        """Returns True if dataset is public."""
+        age = time.time() - self.updated
+        if age > DATASET_REFRESH_SECS:
+            print(f"dataset cache last checked {age} secs ago... refreshing")
+            self.refresh_cache()
+
+        return dataset_id in self.public_datasets    
+
+def public_dataset(dataset_id: str) -> bool:
+    """Returns True if the given dataset is public"""
+    return __DATASET_CACHE__.is_public(dataset_id)
+
+# cache everything initially on startup of service
+__DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
+__DATASET_CACHE__.refresh_cache()
 
 class User(BaseModel):
     email: str
@@ -38,17 +89,30 @@ class User(BaseModel):
             return False
         if role in self.datasets[dataset]:
             return True
+        if role == "clio_general" and dataset in __DATASET_CACHE__.public_datasets:
+            return True
         return False
 
     def can_read(self, dataset: str) -> bool:
-        if "admin" in self.global_roles or "clio_general" in self.global_roles:
+        if "clio_general" in self.global_roles:
+            return True
+        if dataset in __DATASET_CACHE__.public_datasets:
             return True
         dataset_roles = self.datasets(dataset, set())
         read_roles = set("clio_read", "clio_general", "clio_write")
         return read_roles & dataset_roles
     
-    def can_write(self, dataset: str) -> bool:
-        if "admin" in self.global_roles or "clio_general" in self.global_roles:
+    def can_write_own(self, dataset: str) -> bool:
+        if "clio_general" in self.global_roles:
+            return True
+        if dataset in __DATASET_CACHE__.public_datasets:
+            return True
+        dataset_roles = self.datasets(dataset, set())
+        write_roles = set("clio_general", "clio_write")
+        return write_roles & dataset_roles
+    
+    def can_write_others(self, dataset: str) -> bool:
+        if "clio_write" in self.global_roles:
             return True
         return "clio_write" in self.datasets(dataset, set())
     
@@ -96,53 +160,6 @@ class UserCache(BaseModel):
             user = self.refresh_user(user_ref)
         return user
 
-class Dataset(BaseModel):
-    description: str
-    location: str
-    public: Optional[bool] = False
-    layers: Optional[List[Layer]] = [] 
-
-class DatasetCache(BaseModel):
-    collection: Any
-    cache: Dict[str, Dataset] = {}
-    updated: float = time.time() # update time for all datasets
-
-    def refresh_cache(self):
-        datasets = self.collection.get()
-        for dataset_ref in datasets:
-            dataset_dict = dataset_ref.to_dict()
-            dataset_obj = Dataset(**dataset_dict)
-            self.cache[dataset_ref.id] = dataset_obj
-        self.updated = time.time()
-        print(f"Cached {len(self.cache)} dataset metadata.")
-
-    def get_dataset(self, user: User, dataset_id: str) -> Dataset:
-        """Returns dataset information if user has permission to read it."""
-
-        age = time.time() - self.updated
-        if age > DATASET_REFRESH_SECS:
-            print(f"dataset cache last checked {age} secs ago... refreshing")
-            self.refresh_cache()
-
-        if dataset_id not in self.cache:
-            raise HTTPException(status_code=404, detail=f"dataset {dataset_id} not found")    
-
-        dataset =  self.cache[dataset_id]    
-        if dataset.public or user.can_read(dataset_id):
-            return dataset
-            
-        raise HTTPException(status_code=401, detail=f"user does not have permission to read dataset {dataset_id}")
-
-def public_dataset(user: User, dataset_id: str) -> bool:
-    """Returns True if the given dataset is public"""
-    dataset = __DATASET_CACHE__.get_dataset(user, dataset_id)
-    if dataset.public is None:
-        return False
-    return dataset.public
-
-# cache everything initially on startup of service
-__DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
-__DATASET_CACHE__.refresh_cache()
 
 users = UserCache(collection = firestore.get_collection([CLIO_USERS]))
 users.refresh_cache()

@@ -40,6 +40,8 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
         if dataset != "all":
+            if not user.can_read(dataset):
+                raise HTTPException(status_code=401, detail=f"no permission to read annotations in dataset {dataset}")
             annotations = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
             output = {}
             for annotation in annotations:
@@ -53,10 +55,11 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
             for annotation in annotations:
                 res = annotation.to_dict()
                 res["id"] = annotation.id
-                if public_dataset(user, res["dataset"]) or user.has_role("clio_general", dataset):
+                annot_dataset = res.get("dataset", "")
+                if user.can_read(annot_dataset):
                     if res["verified"] or res["email"] == user.email:
                         output.append(res)
-                    elif user.has_role("clio_write", dataset):
+                    elif user.can_write_others(annot_dataset):
                         output.append(res)
             return output
 
@@ -72,6 +75,8 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
 async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     if "title" not in payload or "description" not in payload:
         raise HTTPException(status_code=400, detail=f"POSTed object must include 'title' and 'description' properties")
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to write annotations in dataset {dataset}")
     try:
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset
@@ -88,6 +93,8 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)
 async def delete_atlas(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
+    if not user.can_write_own(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to delete annotations in dataset {dataset}")
     try:
         # delete only supported from interface
         # (delete by dataset + user name + xyz)

@@ -30,7 +30,8 @@ class Dataset(BaseModel):
     description: str
     location: str
     public: Optional[bool] = False
-    layers: Optional[List[Layer]] = [] 
+    layers: Optional[List[Layer]] = []
+    tag: Optional[str]
 
 class DatasetCache(BaseModel):
     collection: Any

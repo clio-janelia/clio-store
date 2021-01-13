@@ -19,6 +19,7 @@ CLIO_DATASETS = "clio_datasets"
 
 # firestore annotation collection name
 CLIO_ANNOTATIONS = "clio_annotations"
+CLIO_ANNOTATIONS_V2 = "clio_annotations_v2"
 
 # firestore saved searches collection name
 CLIO_SAVEDSEARCHES = "clio_savedsearches"

@@ -127,7 +127,7 @@ Delete datasets:
 	
 	% curl -X  DELETE -H "Content-Type: application/json" https://my-api-endpoint/datasets -d '["mb20"]'
 
-### annotations
+### annotations (v1)
 
 Annotations are stored in a dictionary where the key is a unique x_y_z string and the value is 
 whatever dictionary payload that is provided by the application.  Annotations are unique per 
@@ -145,6 +145,11 @@ Get annotations:
 Delete annotations (only one at a time):
 
 	curl -X  DELETE -H "Content-Type: application/json" https://my-api-endpoint/annotations/mb20?x=50\&y=30\&z=50
+
+### annotations (v2)
+
+The v2 annotations are more strongly typed and handles points, line segments, and spheres.  Please
+look at the online API documentation (/docs or /redoc) for the exact usage.
 
 ### Saved Searches
 

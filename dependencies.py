@@ -118,7 +118,7 @@ class User(BaseModel):
     def can_write_others(self, dataset: str) -> bool:
         if "clio_write" in self.global_roles:
             return True
-        return "clio_write" in self.datasets(dataset, set())
+        return "clio_write" in self.datasets.get(dataset, set())
     
     def is_admin(self) -> bool:
         return "admin" in self.global_roles

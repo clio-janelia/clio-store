@@ -49,9 +49,8 @@ class Annotation(BaseModel):
         elif self.kind == Kind.sphere:
             return f"Sp{self.pos[0]}_{self.pos[1]}_{self.pos[2]}_{self.pos[3]}_{self.pos[4]}_{self.pos[5]}"
 
-
-@router.get('/{dataset}')
-@router.get('/{dataset}/', include_in_schema=False)
+@router.get('/{dataset}', response_model=Dict[str, Annotation])
+@router.get('/{dataset}/', response_model=Dict[str, Annotation], include_in_schema=False)
 async def get_annotations(dataset: str, user: User = Depends(get_user)):
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
@@ -68,10 +67,13 @@ async def get_annotations(dataset: str, user: User = Depends(get_user)):
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}")
     return
 
-@router.put('/{dataset}')
-@router.post('/{dataset}')
-@router.put('/{dataset}/', include_in_schema=False)
-@router.post('/{dataset}/', include_in_schema=False)
+class KeyResponse(BaseModel):
+    key: str
+
+@router.put('/{dataset}', response_model=KeyResponse)
+@router.post('/{dataset}', response_model=KeyResponse)
+@router.put('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
+@router.post('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
 async def post_annotations(dataset: str, annotation: Annotation, user: User = Depends(get_user)):
     user_email = annotation.prop["user"]
     authorized = (user_email == user.email and user.can_write_own(dataset)) or \
@@ -83,7 +85,7 @@ async def post_annotations(dataset: str, annotation: Annotation, user: User = De
         annotation_json = jsonable_encoder(annotation)
         key = annotation.key()
         collection.document(key).set(annotation_json)
-        return {"key": key}
+        return KeyResponse({"key": key})
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in put annotation for dataset {dataset}")

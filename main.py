@@ -4,7 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from config import URL_PREFIX
 from dependencies import get_user, app
-from services import annotations_v2, annotations_v1, atlas, datasets, image_query, image_transfer, kv, savedsearches, users, neuprint
+from services import annotations_v2, annotations_v1, atlas, datasets, image_query, image_transfer, kv, savedsearches, users, roles, neuprint
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
@@ -18,6 +18,7 @@ app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/clio_toplevel/tr
 app.include_router(kv.router, prefix=f"{URL_PREFIX}/clio_toplevel/kv", dependencies=[Depends(get_user)])
 app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/clio_toplevel/savedsearches", dependencies=[Depends(get_user)])
 app.include_router(users.router, prefix=f"{URL_PREFIX}/clio_toplevel/users", dependencies=[Depends(get_user)])
+app.include_router(roles.router, prefix=f"{URL_PREFIX}/clio_toplevel/roles", dependencies=[Depends(get_user)])
 
 app.include_router(annotations_v2.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
 app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v2/atlas", dependencies=[Depends(get_user)])
@@ -28,6 +29,7 @@ app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/v2/transfer", de
 app.include_router(kv.router, prefix=f"{URL_PREFIX}/v2/kv", dependencies=[Depends(get_user)])
 app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/v2/savedsearches", dependencies=[Depends(get_user)])
 app.include_router(users.router, prefix=f"{URL_PREFIX}/v2/users", dependencies=[Depends(get_user)])
+app.include_router(roles.router, prefix=f"{URL_PREFIX}/v2/roles", dependencies=[Depends(get_user)])
 
 # Handle CORS
 app.add_middleware(

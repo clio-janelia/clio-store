@@ -141,7 +141,6 @@ class UserCache(BaseModel):
     def refresh_user(self, user_ref) -> User:
         user_dict = user_ref.to_dict()
         user_dict["email"] = user_ref.id
-        user_dict["global_roles"] = user_dict.get("clio_global", set())
         user_obj = User(**user_dict)
         self.cache_user(user_obj)
         return user_obj

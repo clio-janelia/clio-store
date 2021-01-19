@@ -1,5 +1,8 @@
 import os
 
+# Allowed origins for CORS handling.
+ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "janelia.org")
+
 # Prefix to add before the actual API endpoints
 URL_PREFIX = os.environ.get("URL_PREFIX", "")
 

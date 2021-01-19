@@ -21,10 +21,11 @@ __DATASET_CACHE__ = None
 # stores reference to global APP
 app = FastAPI()
 
+# handle CORS
 @app.options('/{rest_of_path:path}')
 async def preflight_handler(request: Request, rest_of_path: str) -> Response:
     response = Response()
-    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
     return response

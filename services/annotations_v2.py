@@ -20,7 +20,7 @@ class Kind(str, Enum):
 
 class Annotation(BaseModel):
     kind: Kind
-    tags: str
+    tags: List[str]
     pos: List[int]
     prop: Dict[str, Any]
 

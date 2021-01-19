@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import List, Dict, Optional
 
 from config import *
-from dependencies import get_user,users, User, CORSHandler
+from dependencies import get_user,users, User
 from stores import firestore
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 @router.get('')
 @router.get('/', include_in_schema=False)

@@ -12,13 +12,13 @@ from google.cloud import firestore
 from google.cloud import storage
 
 from config import *
-from dependencies import get_user, User, CORSHandler
+from dependencies import get_user, User
 
 # transfer cloud run location and destination bucket
 TRANSFER_FUNC = os.environ.get("TRANSFER_FUNC", None)
 TRANSFER_DEST = os.environ.get("TRANSFER_DEST", None)
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 @router.post('/')
 async def transfer(jsondata, current_user: User = Depends(get_user)):

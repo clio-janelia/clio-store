@@ -5,10 +5,10 @@ from config import *
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, AnyStr, Optional
 
-from dependencies import get_user, User, CORSHandler
+from dependencies import get_user, User
 from stores import firestore
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 @router.get('/{dataset}/{scope}/{key}')
 @router.get('/{dataset}/{scope}/{key}/', include_in_schema=False)

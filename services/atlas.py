@@ -5,10 +5,10 @@ from config import *
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, List, Any, AnyStr, Union
 
-from dependencies import get_user, User, public_dataset, CORSHandler
+from dependencies import get_user, User, public_dataset
 from stores import firestore
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 # TODO -- figure out how to allow general JSON in class but with
 #         some properties required.  This will allow better validation and OpenAPI docs.

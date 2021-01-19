@@ -8,10 +8,10 @@ from typing import Dict, List, Any
 from pydantic import BaseModel, ValidationError, validator, root_validator
 
 from config import *
-from dependencies import public_dataset, get_user, User, CORSHandler
+from dependencies import public_dataset, get_user, User
 from stores import firestore
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 class Kind(str, Enum):
     point = 'point'

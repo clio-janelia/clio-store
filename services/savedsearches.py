@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Dict, Any, AnyStr
 
 from config import *
-from dependencies import public_dataset, get_user, User, CORSHandler
+from dependencies import public_dataset, get_user, User
 from stores import firestore
 
-router = APIRouter(route_class=CORSHandler)
+router = APIRouter()
 
 # TODO -- Create pydantic response model so shows up in OpenAPI docs. 
 @router.get('/{dataset}')

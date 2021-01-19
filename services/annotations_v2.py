@@ -5,7 +5,7 @@ from fastapi.encoders import jsonable_encoder
 
 from enum import Enum
 from typing import Dict, List, Any
-from pydantic import BaseModel, ValidationError, validator
+from pydantic import BaseModel, ValidationError, validator, root_validator
 
 from config import *
 from dependencies import public_dataset, get_user, User, CORSHandler
@@ -24,14 +24,19 @@ class Annotation(BaseModel):
     pos: List[int]
     prop: Dict[str, Any]
 
-    @validator('pos')
-    def pos_correct_size(cls, v, values):
-        kind = values['kind']
-        if kind == Kind.point and len(v) != 3:
+    @root_validator
+    def pos_correct_size(cls, v):
+        if 'kind' not in v:
+            raise ValidationError('"kind" property must exist')
+        kind = v['kind']
+        if 'pos' not in v:
+            raise ValidationError('"pos" integer array must be present')
+        pos_length = len(v['pos'])
+        if kind == Kind.point and pos_length != 3:
             raise ValidationError('Point must have 3 elements in pos')
-        if kind == Kind.lineseg and len(v) != 6:
+        if kind == Kind.lineseg and pos_length != 6:
             raise ValidationError('Line segment must have 6 elements in pos')
-        if kind == Kind.sphere and len(v) != 6:
+        if kind == Kind.sphere and pos_length != 6:
             raise ValidationError('Sphere must have 6 elements in pos')
         return v
 
@@ -94,7 +99,7 @@ async def post_annotations(dataset: str, annotation: Annotation, move_key: str =
         collection.document(key).set(annotation_json)
         if move_key != "" and move_key != key:
             collection.document(move_key).delete()
-        return KeyResponse({"key": key})
+        return KeyResponse(key=key)
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in put annotation for dataset {dataset}")

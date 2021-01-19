@@ -27,10 +27,13 @@ class CORSHandler(APIRoute):
         original_route_handler = super().get_route_handler()
 
         async def preflight_handler(request: Request) -> Response:
-            response = await original_route_handler(request)
-            response.headers['Access-Control-Allow-Origin'] = '*'
-            response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
-            response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
+            if request.method == 'OPTIONS':
+                response = Response()
+                response.headers['Access-Control-Allow-Origin'] = '*'
+                response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
+                response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
+            else:
+                response = await original_route_handler(request)
             return response
 
         return preflight_handler

@@ -1,6 +1,5 @@
 from fastapi import Depends
 from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
 
 from config import URL_PREFIX
 from dependencies import get_user, app
@@ -30,15 +29,6 @@ app.include_router(kv.router, prefix=f"{URL_PREFIX}/v2/kv", dependencies=[Depend
 app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/v2/savedsearches", dependencies=[Depends(get_user)])
 app.include_router(users.router, prefix=f"{URL_PREFIX}/v2/users", dependencies=[Depends(get_user)])
 app.include_router(roles.router, prefix=f"{URL_PREFIX}/v2/roles", dependencies=[Depends(get_user)])
-
-# Handle CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins='*',
-    allow_credentials=False, # Can't be True (cookies supported for CORS) if origins=*
-    allow_methods=['*'],
-    allow_headers=['*'],
-)
 
 # allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)

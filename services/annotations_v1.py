@@ -1,13 +1,12 @@
 import time
 
-from config import *
-
 from fastapi import APIRouter, Depends, HTTPException
 
-from dependencies import public_dataset, get_user, User
+from config import *
+from dependencies import public_dataset, get_user, User, CORSHandler
 from stores import firestore
 
-router = APIRouter()
+router = APIRouter(route_class=CORSHandler)
 
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)

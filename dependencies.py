@@ -1,7 +1,10 @@
 import time
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordBearer
+from fastapi.routing import APIRoute
+
+from typing import Callable
 
 from google.auth.transport import requests
 from google.oauth2 import id_token
@@ -10,13 +13,27 @@ from google.auth import exceptions
 from pydantic import BaseModel
 from pydantic.typing import List, Set, Dict, Any, Optional
 
-from stores import firestore
 from config import *
+from stores import firestore
 
 __DATASET_CACHE__ = None
 
 # stores reference to global APP
 app = FastAPI()
+
+# Handle CORS
+class CORSHandler(APIRoute):
+    def get_route_handler(self) -> Callable:
+        original_route_handler = super().get_route_handler()
+
+        async def preflight_handler(request: Request) -> Response:
+            response = await original_route_handler(request)
+            response.headers['Access-Control-Allow-Origin'] = '*'
+            response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
+            response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
+            return response
+
+        return preflight_handler
 
 # reloads User and Dataset info from DB after this many seconds
 USER_REFRESH_SECS = 600.0

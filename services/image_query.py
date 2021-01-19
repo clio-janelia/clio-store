@@ -2,13 +2,12 @@ import json
 import os
 
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import get_user
-from dependencies import User
 
 from google.cloud import storage
 from google.cloud import bigquery
 
 from config import *
+from dependencies import get_user, User, CORSHandler
 
 
 # constants for signature search
@@ -17,7 +16,7 @@ SIG_CACHE = None # dataset to meta data cache for signature image search
 SIG_DATASET_SUFFIX = "_imgsearch"
 MAX_DISTANCE = 100 # 100 pixels (TODO: make dynamic)
 
-router = APIRouter()
+router = APIRouter(route_class=CORSHandler)
 
 @router.get('/atlocation/{dataset}')
 async def at_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):

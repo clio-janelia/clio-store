@@ -1,8 +1,9 @@
-from config import *
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import get_user, User, app
 import aiohttp 
 from pydantic import BaseModel
+
+from config import *
+from dependencies import app, get_user, User, CORSHandler
 
 # token for accessing neuprint
 NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
@@ -10,7 +11,7 @@ NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
 # neuprint address (TODO: move configuration to be in the dataset)
 NEUPRINT_URL="https://neuprint.janelia.org/api/custom/custom"
 
-router = APIRouter()
+router = APIRouter(route_class=CORSHandler)
 
 # create a persistent session for this service
 client_session = aiohttp.ClientSession()

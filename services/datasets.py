@@ -1,13 +1,13 @@
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import public_dataset, get_user, User
+from dependencies import public_dataset, get_user, User, CORSHandler
 from pydantic.typing import List
 
 from google.cloud import firestore
 from google.cloud import storage
 
-router = APIRouter()
+router = APIRouter(route_class=CORSHandler)
 
 @router.post('')
 @router.post('/', include_in_schema=False)

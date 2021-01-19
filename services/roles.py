@@ -1,14 +1,13 @@
 import time
 
-from config import *
-
 from fastapi import APIRouter, Depends, HTTPException
 from typing import Set
 
-from dependencies import get_user,users, User
+from config import *
+from dependencies import get_user,users, User, CORSHandler
 from stores import firestore
 
-router = APIRouter()
+router = APIRouter(route_class=CORSHandler)
 
 @router.get('')
 @router.get('/', include_in_schema=False)

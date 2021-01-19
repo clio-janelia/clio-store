@@ -21,7 +21,7 @@ __DATASET_CACHE__ = None
 # stores reference to global APP
 app = FastAPI()
 
-# handle CORS
+# handle CORS preflight requests
 @app.options('/{rest_of_path:path}')
 async def preflight_handler(request: Request, rest_of_path: str) -> Response:
     response = Response()
@@ -29,6 +29,17 @@ async def preflight_handler(request: Request, rest_of_path: str) -> Response:
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
     return response
+
+# set CORS headers
+@app.middleware("http")
+async def add_CORS_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
+    return response
+   
+
 
 # reloads User and Dataset info from DB after this many seconds
 USER_REFRESH_SECS = 600.0

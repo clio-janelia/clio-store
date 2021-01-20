@@ -52,6 +52,9 @@ Here is a list of variables:
 
 URL_PREFIX: a prefix to add to the API endpoint URLs.  (e.g., "/clio_toplevel")
 
+ALLOWED_ORIGINS: the allowed origins for CORS `Access-Control-Allow-Origin` header. 
+Default is the wildcard (*).
+
 OWNER: the email address of a user that automatically gets admin privileges.
 
 SIG_BUCKET: the GCS bucket specifier for the dataset signatures.

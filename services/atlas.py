@@ -18,7 +18,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
         if dataset != "all":
             if not user.can_read(dataset):
                 raise HTTPException(status_code=401, detail=f"no permission to read annotations in dataset {dataset}")
-            annotations = collection.where("email", "==", user.email).where("dataset", "==", dataset).get()
+            annotations = collection.where("user", "==", user.email).where("dataset", "==", dataset).get()
             output = {}
             for annotation in annotations:
                 res = annotation.to_dict()
@@ -33,7 +33,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
                 res["id"] = annotation.id
                 annot_dataset = res.get("dataset", "")
                 if user.can_read(annot_dataset):
-                    if res["verified"] or res["email"] == user.email:
+                    if res["verified"] or res["user"] == user.email:
                         output.append(res)
                     elif user.can_write_others(annot_dataset):
                         output.append(res)
@@ -78,7 +78,7 @@ async def delete_atlas(dataset: str, x: int, y: int, z: int, user: User = Depend
         # delete only supported from interface
         # (delete by dataset + user name + xyz)
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
-        match_list = collection.where("email", "==", user.email).where("locationkey", "==", f"{x}_{y}_{z}").where("dataset", "==", dataset).get()
+        match_list = collection.where("user", "==", user.email).where("locationkey", "==", f"{x}_{y}_{z}").where("dataset", "==", dataset).get()
         for match in match_list:
             match.reference.delete()
     except Exception as e:

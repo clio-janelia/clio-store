@@ -23,6 +23,7 @@ class Annotation(BaseModel):
     tags: List[str]
     pos: List[int]
     prop: Dict[str, Any]
+    user: str
     title: Optional[str]
     description: Optional[str]
 

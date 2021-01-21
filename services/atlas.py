@@ -48,7 +48,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
+async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)) -> dict:
     if "title" not in payload or "description" not in payload or "user" not in payload:
         raise HTTPException(status_code=400, detail=f"POSTed object must include 'title', 'description', and 'user' properties")
     if not user.can_write_own(dataset):
@@ -64,6 +64,7 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
             payload["verified"] = False
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
         collection.document().set(payload)
+        return payload
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in put annotation ({x},{y},{z}) for dataset {dataset}")

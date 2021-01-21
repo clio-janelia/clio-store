@@ -26,7 +26,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
                 output[res["locationkey"]] = res
             return output
         else:
-            annotations = collection.get()
+            annotations = collection.stream()
             output = []
             for annotation in annotations:
                 res = annotation.to_dict()
@@ -56,14 +56,30 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
     if payload["user"] != user.email and not user.can_write_others(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to write others' annotations in dataset {dataset}")
     try:
+        location_key = f"{x}_{y}_{z}"
+        collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
+        annotations = collection.where("user", "==", payload["user"]) \
+                               .where("dataset", "==", dataset) \
+                               .where("locationkey", "==", f"{x}_{y}_{z}").get()
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset
         payload["location"] = [x, y, z]
-        payload["locationkey"] = f"{x}_{y}_{z}"
+        payload["locationkey"] = location_key
         if "verified" not in payload:
             payload["verified"] = False
-        collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
-        collection.document().set(payload)
+        if len(annotations) == 0:
+            new_ref = collection.document()
+            payload["id"] = new_ref.id
+            new_ref.set(payload)
+        else:
+            first = True
+            for annotation in annotations:
+                if first:
+                    payload["id"] = annotation.id
+                    annotation.reference.set(payload)
+                    first = False
+                else:
+                    annotation.reference.delete()
         return payload
     except Exception as e:
         print(e)

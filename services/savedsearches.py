@@ -36,6 +36,7 @@ async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: Us
     if not user.has_role("clio_general", dataset):
         raise HTTPException(status_code=401, detail=f"user does not have permission to write searches to dataset {dataset_id}")
     try:
+        # we only allow one annotation per email and location key so if it exists, replace.
         payload["timestamp"] = time.time()
         payload["dataset"] = dataset
         payload["location"] = [x, y, z]

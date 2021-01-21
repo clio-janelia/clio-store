@@ -43,12 +43,6 @@ class Annotation(BaseModel):
             raise ValidationError('Sphere must have 6 elements in pos')
         return v
 
-    @validator('prop')
-    def prop_has_user(cls, v):
-        if "user" not in v:
-            raise ValidationError('prop must include user entry')
-        return v
-
     def key(self) -> str:
         if self.kind == Kind.point:
             return f"Pt{self.pos[0]}_{self.pos[1]}_{self.pos[2]}"
@@ -90,13 +84,12 @@ async def post_annotations(dataset: str, annotation: Annotation, move_key: str =
     """ Allows adding or moving an annotation.  Use 'move_key=oldkey' query string to remove old annotation
         with key 'oldkey'.  Returns JSON with key for newly added annotation.
     """
-    user_email = annotation.prop["user"]
-    authorized = (user_email == user.email and user.can_write_own(dataset)) or \
-                 (user_email != user.email and user.can_write_others(dataset))
+    authorized = (annotation.user == user.email and user.can_write_own(dataset)) or \
+                 (annotation.user != user.email and user.can_write_others(dataset))
     if not authorized:
-        raise HTTPException(status_code=401, detail=f"no permission to add annotation for user {user_email} on dataset {dataset}")
+        raise HTTPException(status_code=401, detail=f"no permission to add annotation for user {annotation.user} on dataset {dataset}")
     try:
-        collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, user_email])
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, annotation.user])
         annotation_json = jsonable_encoder(annotation, exclude_unset=True)
         key = annotation.key()
         collection.document(key).set(annotation_json)

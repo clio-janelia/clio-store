@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from enum import Enum
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 from pydantic import BaseModel, ValidationError, validator, root_validator
 
 from config import *
@@ -23,6 +23,8 @@ class Annotation(BaseModel):
     tags: List[str]
     pos: List[int]
     prop: Dict[str, Any]
+    title: Optional[str]
+    description: Optional[str]
 
     @root_validator
     def pos_correct_size(cls, v):
@@ -94,7 +96,7 @@ async def post_annotations(dataset: str, annotation: Annotation, move_key: str =
         raise HTTPException(status_code=401, detail=f"no permission to add annotation for user {user_email} on dataset {dataset}")
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, user_email])
-        annotation_json = jsonable_encoder(annotation)
+        annotation_json = jsonable_encoder(annotation, exclude_unset=True)
         key = annotation.key()
         collection.document(key).set(annotation_json)
         if move_key != "" and move_key != key:

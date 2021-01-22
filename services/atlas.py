@@ -17,7 +17,7 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
         if dataset != "all":
             if not user.can_read(dataset):
-                raise HTTPException(status_code=401, detail=f"no permission to read annotations in dataset {dataset}")
+                raise HTTPException(status_code=401, detail=f"no permission to read annotations")
             annotations = collection.where("user", "==", user.email).where("dataset", "==", dataset).get()
             output = {}
             for annotation in annotations:
@@ -39,9 +39,11 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
                         output.append(res)
             return output
 
+    except HTTPException as e:
+        raise e
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail=f"error in retrieving atlas for dataset {dataset}")
+        raise HTTPException(status_code=400, detail=f"error in retrieving atlas for dataset {dataset}: {e}")
     return
 
 @router.put('/{dataset}')
@@ -55,6 +57,8 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
         raise HTTPException(status_code=401, detail=f"no permission to write annotations in dataset {dataset}")
     if payload["user"] != user.email and not user.can_write_others(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to write others' annotations in dataset {dataset}")
+    if "verified" in payload and payload["verified"] and not user.has_role("clio_write", dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to set verified status in dataset {dataset}")
     try:
         location_key = f"{x}_{y}_{z}"
         collection = firestore.get_collection([CLIO_ANNOTATIONS, "ATLAS", "annotations"])
@@ -65,8 +69,6 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
         payload["dataset"] = dataset
         payload["location"] = [x, y, z]
         payload["locationkey"] = location_key
-        if "verified" not in payload:
-            payload["verified"] = False
         if len(annotations) == 0:
             new_ref = collection.document()
             payload["id"] = new_ref.id
@@ -75,15 +77,21 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
             first = True
             for annotation in annotations:
                 if first:
+                    current = annotation.to_dict()
+                    if "verified" in current and current["verified"] and not user.has_role("clio_write", dataset):
+                        raise HTTPException(status_code=401, detail=f"no permission to modify verified atlas pt")
                     payload["id"] = annotation.id
                     annotation.reference.set(payload)
                     first = False
-                else:
+                else:  # shouldn't happen unless legacy bad points.
+                    print(f"deleted duplicate atlas annotation point: {annotation}")
                     annotation.reference.delete()
         return payload
+    except HTTPException as e:
+        raise e
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail=f"error in put annotation ({x},{y},{z}) for dataset {dataset}")
+        raise HTTPException(status_code=400, detail=f"error in put annotation ({x},{y},{z}) for dataset {dataset}: {e}")
 
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)

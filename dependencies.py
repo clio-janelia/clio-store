@@ -114,7 +114,7 @@ class User(BaseModel):
             return True
         if dataset == "":
             return False
-        if role in self.datasets[dataset]:
+        if dataset in self.datasets and role in self.datasets[dataset]:
             return True
         if role == "clio_general" and dataset in __DATASET_CACHE__.public_datasets:
             return True

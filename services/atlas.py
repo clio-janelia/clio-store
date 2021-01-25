@@ -30,9 +30,13 @@ async def get_atlas(dataset: str, user: User = Depends(get_user)):
             output = []
             for annotation in annotations:
                 res = annotation.to_dict()
-                res["id"] = annotation.id
                 annot_dataset = res.get("dataset", "")
                 if user.can_read(annot_dataset):
+                    if "verified" not in res:
+                        print(f"bad atlas point, adding 'verified': {res}")
+                        res["verified"] = False
+                        annotation.reference.set(res)
+                    res["id"] = annotation.id
                     if res["verified"] or res["user"] == user.email:
                         output.append(res)
                     elif user.can_write_others(annot_dataset):
@@ -72,6 +76,11 @@ async def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: 
         if len(annotations) == 0:
             new_ref = collection.document()
             payload["id"] = new_ref.id
+            if "verified" in payload:
+                if payload["verified"] and not user.has_role("clio_write", dataset):
+                    raise HTTPException(status_code=401, detail=f"no permission to set verified atlas pt")
+            else:
+                payload["verified"] = False
             new_ref.set(payload)
         else:
             first = True

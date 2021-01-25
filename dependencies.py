@@ -109,7 +109,7 @@ class User(BaseModel):
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
 
-    def has_role(self, role, dataset: str) -> bool:
+    def has_role(self, role: str, dataset: str = "") -> bool:
         if role in self.global_roles:
             return True
         if dataset == "":
@@ -120,7 +120,7 @@ class User(BaseModel):
             return True
         return False
 
-    def can_read(self, dataset: str) -> bool:
+    def can_read(self, dataset: str = "") -> bool:
         if "clio_general" in self.global_roles:
             return True
         if dataset in __DATASET_CACHE__.public_datasets:
@@ -129,7 +129,7 @@ class User(BaseModel):
         read_roles = set("clio_read", "clio_general", "clio_write")
         return read_roles & dataset_roles
     
-    def can_write_own(self, dataset: str) -> bool:
+    def can_write_own(self, dataset: str = "") -> bool:
         if "clio_general" in self.global_roles:
             return True
         if dataset in __DATASET_CACHE__.public_datasets:
@@ -138,7 +138,7 @@ class User(BaseModel):
         write_roles = set("clio_general", "clio_write")
         return write_roles & dataset_roles
     
-    def can_write_others(self, dataset: str) -> bool:
+    def can_write_others(self, dataset: str = "") -> bool:
         if "clio_write" in self.global_roles:
             return True
         return "clio_write" in self.datasets.get(dataset, set())

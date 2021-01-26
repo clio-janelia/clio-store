@@ -125,8 +125,8 @@ class User(BaseModel):
             return True
         if dataset in __DATASET_CACHE__.public_datasets:
             return True
-        dataset_roles = self.datasets(dataset, set())
-        read_roles = set("clio_read", "clio_general", "clio_write")
+        dataset_roles = self.datasets.get(dataset, set())
+        read_roles = set(["clio_read", "clio_general", "clio_write"])
         return read_roles & dataset_roles
     
     def can_write_own(self, dataset: str = "") -> bool:
@@ -134,8 +134,8 @@ class User(BaseModel):
             return True
         if dataset in __DATASET_CACHE__.public_datasets:
             return True
-        dataset_roles = self.datasets(dataset, set())
-        write_roles = set("clio_general", "clio_write")
+        dataset_roles = self.datasets.get(dataset, set())
+        write_roles = set(["clio_general", "clio_write"])
         return write_roles & dataset_roles
     
     def can_write_others(self, dataset: str = "") -> bool:
@@ -183,7 +183,6 @@ class UserCache(BaseModel):
                 user = None
         if user is None:
             user_ref = self.collection.document(email).get()
-            print(f"user_ref: {user_ref.exists}")
             if user_ref.exists:
                 user = self.refresh_user(user_ref)
             else:

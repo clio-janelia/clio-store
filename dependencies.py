@@ -183,10 +183,11 @@ class UserCache(BaseModel):
                 user = None
         if user is None:
             user_ref = self.collection.document(email).get()
-            if user_ref is None:
-                user = User(email=email)
-            else:
+            print(f"user_ref: {user_ref.exists}")
+            if user_ref.exists:
                 user = self.refresh_user(user_ref)
+            else:
+                user = User(email=email)
         return user
 
 

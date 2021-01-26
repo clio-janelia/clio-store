@@ -16,8 +16,6 @@ async def get_kv(scope: str, key: str, timestamp: bool = False, user: User = Dep
     Gets the key-value in the given scope with the given key for the authenticated user.  
     If timestamp = True, returns a _timestamp property with the Unix time of key-value persistence.
     """
-    if not user.can_read():
-        raise HTTPException(status_code=401, detail=f"no permission to read key-values")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         value_ref = collection.document(key).get()
@@ -38,8 +36,6 @@ async def get_kv_all(scope: str, timestamp: bool = False, user: User = Depends(g
     Gets all key-values in the given scope for the authenticated user.  If timestamp = True, returns
     a _timestamp property with the Unix time of key-value persistence.
     """
-    if not user.can_read():
-        raise HTTPException(status_code=401, detail=f"no permission to read key-values")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         kvs = collection.get()
@@ -58,8 +54,6 @@ async def get_kv_all(scope: str, timestamp: bool = False, user: User = Depends(g
 @router.post('/{scope}/{key}/', include_in_schema=False)
 async def post_kv(scope: str, key: str, payload: dict, user: User = Depends(get_user)):
     """Puts a key-value in the given scope for the authenticated user."""
-    if not user.can_write_own():
-        raise HTTPException(status_code=401, detail=f"no permission to write key-values")
     try:        
         payload["_timestamp"] = time.time()
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
@@ -72,8 +66,6 @@ async def post_kv(scope: str, key: str, payload: dict, user: User = Depends(get_
 @router.delete('/{scope}/{key}/', include_in_schema=False)
 async def delete_kv(scope: str, key: str, user: User = Depends(get_user)):
     """Deletes a key-value with the given key in the given scope for the authenticated user."""
-    if not user.can_write_own():
-        raise HTTPException(status_code=401, detail=f"no permission to delete key-values")
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])
         collection.document(key).delete()

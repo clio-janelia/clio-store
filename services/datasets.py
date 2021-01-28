@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.post('')
 @router.post('/', include_in_schema=False)
-async def post_datasets(datasets: dict, current_user: User = Depends(get_user)):
+def post_datasets(datasets: dict, current_user: User = Depends(get_user)):
     if not current_user.is_admin():
         raise HTTPException(status_code=401, detail="user must be admin to set dataset metadata")
     try:
@@ -24,7 +24,7 @@ async def post_datasets(datasets: dict, current_user: User = Depends(get_user)):
 
 @router.delete('')
 @router.delete('/', include_in_schema=False)
-async def delete_datasets(to_delete: List[str], current_user: User = Depends(get_user)):
+def delete_datasets(to_delete: List[str], current_user: User = Depends(get_user)):
     if not current_user.is_admin():
         raise HTTPException(status_code=401, detail="user must be admin to delete dataset metadata")
     try:
@@ -38,7 +38,7 @@ async def delete_datasets(to_delete: List[str], current_user: User = Depends(get
 
 @router.get('')
 @router.get('/', include_in_schema=False)
-async def get_datasets(current_user: User = Depends(get_user)):
+def get_datasets(current_user: User = Depends(get_user)):
     try:
         db = firestore.Client()
         datasets = db.collection(CLIO_DATASETS).get()

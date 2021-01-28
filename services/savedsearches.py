@@ -12,7 +12,7 @@ router = APIRouter()
 # TODO -- Create pydantic response model so shows up in OpenAPI docs. 
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)
-async def get_searches(dataset: str, user: User = Depends(get_user)):
+def get_searches(dataset: str, user: User = Depends(get_user)):
     if not user.has_role("clio_general", dataset):
         raise HTTPException(status_code=401, detail=f"user does not have permission to read dataset {dataset_id}")
     try:
@@ -32,7 +32,7 @@ async def get_searches(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
+def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     if not user.has_role("clio_general", dataset):
         raise HTTPException(status_code=401, detail=f"user does not have permission to write searches to dataset {dataset_id}")
     try:
@@ -50,7 +50,7 @@ async def searches(dataset: str, x: int, y: int, z: int, payload: dict, user: Us
 
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)
-async def delete_searches(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
+def delete_searches(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
     if not user.has_role("clio_general", dataset):
         raise HTTPException(status_code=401, detail=f"user does not have permission to delete searches in dataset {dataset_id}")
     try:

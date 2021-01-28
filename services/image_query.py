@@ -19,13 +19,13 @@ MAX_DISTANCE = 100 # 100 pixels (TODO: make dynamic)
 router = APIRouter()
 
 @router.get('/atlocation/{dataset}')
-async def at_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):
+def at_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):
     if SIG_BUCKET is None:
         raise HTTPException(status_code=503, detail="signature bucket not set: /signatures not available")
     return get_signature(current_user, dataset, (x, y, z))
 
 @router.get('/likelocation/{dataset}')
-async def like_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):
+def like_location(dataset: str, x: int, y: int, z: int, current_user: User = Depends(get_user)):
     if SIG_BUCKET is None:
         raise HTTPException(status_code=503, detail="signature bucket not set: /signatures not available")
     return get_matches(current_user, dataset, (x, y, z))

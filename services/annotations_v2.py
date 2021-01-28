@@ -53,7 +53,7 @@ class Annotation(BaseModel):
 
 @router.get('/{dataset}', response_model=Dict[str, Annotation])
 @router.get('/{dataset}/', response_model=Dict[str, Annotation], include_in_schema=False)
-async def get_annotations(dataset: str, user: User = Depends(get_user)):
+def get_annotations(dataset: str, user: User = Depends(get_user)):
     """ Returns all annotations for the user defined by the accompanying Authorization token.
         Return format is JSON object with annotations as enclosed key-value pairs.  Keys are
         used in move and delete operations.
@@ -80,7 +80,7 @@ class KeyResponse(BaseModel):
 @router.post('/{dataset}', response_model=KeyResponse)
 @router.put('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
 @router.post('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
-async def post_annotations(dataset: str, annotation: Annotation, move_key: str = "", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation: Annotation, move_key: str = "", user: User = Depends(get_user)):
     """ Allows adding or moving an annotation.  Use 'move_key=oldkey' query string to remove old annotation
         with key 'oldkey'.  Returns JSON with key for newly added annotation.
     """
@@ -102,7 +102,7 @@ async def post_annotations(dataset: str, annotation: Annotation, move_key: str =
 
 @router.delete('/{dataset}/{key}')
 @router.delete('/{dataset}/{key}/', include_in_schema=False)
-async def delete_annotation(dataset: str, key: str, user_email: str = "", user: User = Depends(get_user)):
+def delete_annotation(dataset: str, key: str, user_email: str = "", user: User = Depends(get_user)):
     """ Delete an annotation based on the key supplied in the URL. If the client has proper authorization,
         annotations for another user can be deleted by supplying the query string 'user_email=foo@bar.com'.
     """

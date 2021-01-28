@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get('/{scope}/{key}')
 @router.get('/{scope}/{key}/', include_in_schema=False)
-async def get_kv(scope: str, key: str, timestamp: bool = False, user: User = Depends(get_user)):
+def get_kv(scope: str, key: str, timestamp: bool = False, user: User = Depends(get_user)):
     """
     Gets the key-value in the given scope with the given key for the authenticated user.  
     If timestamp = True, returns a _timestamp property with the Unix time of key-value persistence.
@@ -31,7 +31,7 @@ async def get_kv(scope: str, key: str, timestamp: bool = False, user: User = Dep
 
 @router.get('/{scope}')
 @router.get('/{scope}/', include_in_schema=False)
-async def get_kv_all(scope: str, timestamp: bool = False, user: User = Depends(get_user)) -> dict:
+def get_kv_all(scope: str, timestamp: bool = False, user: User = Depends(get_user)) -> dict:
     """
     Gets all key-values in the given scope for the authenticated user.  If timestamp = True, returns
     a _timestamp property with the Unix time of key-value persistence.
@@ -52,7 +52,7 @@ async def get_kv_all(scope: str, timestamp: bool = False, user: User = Depends(g
 
 @router.post('/{scope}/{key}')
 @router.post('/{scope}/{key}/', include_in_schema=False)
-async def post_kv(scope: str, key: str, payload: dict, user: User = Depends(get_user)):
+def post_kv(scope: str, key: str, payload: dict, user: User = Depends(get_user)):
     """Puts a key-value in the given scope for the authenticated user."""
     try:        
         payload["_timestamp"] = time.time()
@@ -64,7 +64,7 @@ async def post_kv(scope: str, key: str, payload: dict, user: User = Depends(get_
 
 @router.delete('/{scope}/{key}')
 @router.delete('/{scope}/{key}/', include_in_schema=False)
-async def delete_kv(scope: str, key: str, user: User = Depends(get_user)):
+def delete_kv(scope: str, key: str, user: User = Depends(get_user)):
     """Deletes a key-value with the given key in the given scope for the authenticated user."""
     try:
         collection = firestore.get_collection([CLIO_KEYVALUE, user.email, scope])

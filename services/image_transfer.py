@@ -21,7 +21,7 @@ TRANSFER_DEST = os.environ.get("TRANSFER_DEST", None)
 router = APIRouter()
 
 @router.post('/')
-async def transfer(jsondata, current_user: User = Depends(get_user)):
+def transfer(jsondata, current_user: User = Depends(get_user)):
     if TRANSFER_FUNC is None or TRANSFER_DEST is None:
         raise HTTPException(status_code=503, detail="transfer func/dest not set: /transfer not available")
     return transferData(current_user, jsondata)

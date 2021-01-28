@@ -11,7 +11,7 @@ router = APIRouter()
 
 @router.get('')
 @router.get('/', include_in_schema=False)
-async def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
+def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:
@@ -22,7 +22,7 @@ async def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
 
 @router.post('')
 @router.post('/', include_in_schema=False)
-async def post_users(users: Dict[str, User], user: User = Depends(get_user)):
+def post_users(users: Dict[str, User], user: User = Depends(get_user)):
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:
@@ -37,7 +37,7 @@ async def post_users(users: Dict[str, User], user: User = Depends(get_user)):
 
 @router.delete('')
 @router.delete('/', include_in_schema=False)
-async def delete_users(deleted_emails: List, user: User = Depends(get_user)):
+def delete_users(deleted_emails: List, user: User = Depends(get_user)):
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:

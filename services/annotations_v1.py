@@ -10,7 +10,7 @@ router = APIRouter()
 
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)
-async def get_annotations(dataset: str, user: User = Depends(get_user)):
+def get_annotations(dataset: str, user: User = Depends(get_user)):
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
     try:
@@ -31,7 +31,7 @@ async def get_annotations(dataset: str, user: User = Depends(get_user)):
 @router.post('/{dataset}')
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
-async def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
+def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)):
     if not user.can_write_own(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to write annotations on dataset {dataset}")
     try:        
@@ -48,7 +48,7 @@ async def post_annotations(dataset: str, x: int, y: int, z: int, payload: dict, 
 
 @router.delete('/{dataset}')
 @router.delete('/{dataset}/', include_in_schema=False)
-async def delete_annotation(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
+def delete_annotation(dataset: str, x: int, y: int, z: int, user: User = Depends(get_user)):
     if not user.can_write_own(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to delete annotations on dataset {dataset}")
     try:

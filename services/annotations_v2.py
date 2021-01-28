@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from enum import Enum
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Union, Optional
 from pydantic import BaseModel, ValidationError, validator, root_validator
 
 from config import *
@@ -76,14 +76,10 @@ def get_annotations(dataset: str, user: User = Depends(get_user)):
 class KeyResponse(BaseModel):
     key: str
 
-@router.put('/{dataset}', response_model=KeyResponse)
-@router.post('/{dataset}', response_model=KeyResponse)
-@router.put('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
-@router.post('/{dataset}/', response_model=KeyResponse, include_in_schema=False)
-def post_annotations(dataset: str, annotation: Annotation, move_key: str = "", user: User = Depends(get_user)):
-    """ Allows adding or moving an annotation.  Use 'move_key=oldkey' query string to remove old annotation
-        with key 'oldkey'.  Returns JSON with key for newly added annotation.
-    """
+class KeyResponses(BaseModel):
+    keys: List[str]
+
+def write_annotation(dataset: str, annotation: Annotation, user: User, move_key: str = "") -> str:
     authorized = (annotation.user == user.email and user.can_write_own(dataset)) or \
                  (annotation.user != user.email and user.can_write_others(dataset))
     if not authorized:
@@ -95,10 +91,32 @@ def post_annotations(dataset: str, annotation: Annotation, move_key: str = "", u
         collection.document(key).set(annotation_json)
         if move_key != "" and move_key != key:
             collection.document(move_key).delete()
-        return KeyResponse(key=key)
+        return key
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in put annotation for dataset {dataset}")
+
+PutResponse = Union[KeyResponse, KeyResponses]
+
+@router.put('/{dataset}', response_model=PutResponse)
+@router.post('/{dataset}', response_model=PutResponse)
+@router.put('/{dataset}/', response_model=PutResponse, include_in_schema=False)
+@router.post('/{dataset}/', response_model=PutResponse, include_in_schema=False)
+def post_annotations(dataset: str, payload: Union[Annotation, List[Annotation]], move_key: str = "", user: User = Depends(get_user)):
+    """ Allows adding annotations or moving a single annotation.  POST should be either a single
+        annotation object or a list of objects.  If a single annotation, can also use 'move_key=oldkey' 
+        query string to remove old annotation with key 'oldkey'.  If POSTing a list of annotations,
+        the 'move_key' query string is ignored. Returns JSON with "key" or "keys" property holding
+        a single key or a list of keys in the same order as the POSTed annotations.
+    """
+    if isinstance(payload, Annotation):
+        key = write_annotation(dataset, payload, user, move_key)
+        return KeyResponse(key=key)
+    else:
+        keys = []
+        for annotation in payload:
+            keys.append(write_annotation(dataset, annotation, user))
+        return KeyResponses(keys=keys)
 
 @router.delete('/{dataset}/{key}')
 @router.delete('/{dataset}/{key}/', include_in_schema=False)

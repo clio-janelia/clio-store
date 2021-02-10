@@ -102,6 +102,9 @@ def public_dataset(dataset_id: str) -> bool:
 __DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
 __DATASET_CACHE__.refresh_cache()
 
+def get_dataset(dataset_id: str) -> Dataset:
+    return __DATASET_CACHE__.get_dataset(dataset_id)
+
 class User(BaseModel):
     email: str
     # email_verified: bool = False

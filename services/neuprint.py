@@ -10,7 +10,7 @@ NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
 
 # neuprint address (TODO: move configuration to be in the dataset)
 NEUPRINT_URL="https://neuprint.janelia.org/api/custom/custom"
-
+#NEUPRINT_URL="https://34.107.185.28/api/custom/custom"
 router = APIRouter()
 
 # create a persistent session for this service
@@ -22,7 +22,8 @@ async def cleanup():
     await client_session.close()
 
 neuprint_headers = {
-    "Authorization": f"Bearer {NEUPRINT_CREDENTIALS}"
+    "Authorization": f"Bearer {NEUPRINT_CREDENTIALS}",
+    "content-type": "application/json"
 }
 
 class NeuprintRequest(BaseModel):
@@ -38,7 +39,7 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
         raise HTTPException(status_code=403, detail="user doesn't have authorization for this dataset")
 
     try:
-        async with client_session.post(NEUPRINT_URL, data=dict(payload), headers=neuprint_headers) as resp:
+        async with client_session.post(NEUPRINT_URL, data=payload.json(), headers=neuprint_headers) as resp:
             response = await resp.json()
     except Exception as e:
         print(e)

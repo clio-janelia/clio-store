@@ -20,10 +20,10 @@ class Kind(str, Enum):
 
 class Annotation(BaseModel):
     kind: Kind
-    tags: List[str]
     pos: List[int]
     prop: Dict[str, Any]
-    user: str
+    tags: Optional[List[str]]
+    user: Optional[str]
     title: Optional[str]
     description: Optional[str]
 
@@ -80,6 +80,8 @@ class KeyResponses(BaseModel):
     keys: List[str]
 
 def write_annotation(dataset: str, annotation: Annotation, user: User, move_key: str = "") -> str:
+    if annotation.user is None:
+        annotation.user = user.email
     authorized = (annotation.user == user.email and user.can_write_own(dataset)) or \
                  (annotation.user != user.email and user.can_write_others(dataset))
     if not authorized:

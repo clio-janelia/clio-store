@@ -1,10 +1,11 @@
 import time
 
 from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Dict, Optional
+from typing import List, Dict, Set, Optional
+from pydantic import BaseModel
 
 from config import *
-from dependencies import get_user,users, User
+from dependencies import get_user, users, User
 from stores import firestore
 
 router = APIRouter()
@@ -20,17 +21,23 @@ def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving users: {e}")
 
+class UserPayload(BaseModel):
+    global_roles: Optional[Set[str]] = set()
+    datasets: Optional[Dict[str, Set[str]]] = {}
+  
 @router.post('')
 @router.post('/', include_in_schema=False)
-def post_users(users: Dict[str, User], user: User = Depends(get_user)):
+def post_users(postdata: Dict[str, UserPayload], user: User = Depends(get_user)):
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:
         collection = firestore.get_collection([CLIO_USERS])
-        for email, user in users.items():
-            jsondata = user.dict(exclude={'email'})
-            collection.document(email).set(jsondata)
-            users.cache_user(user)
+        for email, data in postdata.items():
+            user_dict = data.dict()
+            collection.document(email).set(user_dict)
+            user_dict["email"] = email
+            user_with_email = User(**user_dict)
+            users.cache_user(user_with_email)
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in posting users: {e}")

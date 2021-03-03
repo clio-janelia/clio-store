@@ -29,3 +29,6 @@ CLIO_SAVEDSEARCHES = "clio_savedsearches"
 
 # firestore keyvalue
 CLIO_KEYVALUE = "clio_keyvalue"
+
+# firestore pull requests
+CLIO_PULL_REQUESTS = "clio_pull_requests"

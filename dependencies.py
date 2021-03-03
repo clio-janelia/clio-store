@@ -22,7 +22,7 @@ __DATASET_CACHE__ = None
 app = FastAPI()
 
 # handle CORS preflight requests
-@app.options('/{rest_of_path:path}')
+@app.options('/{rest_of_path:path}', include_in_schema=False)
 async def preflight_handler(request: Request, rest_of_path: str) -> Response:
     response = Response()
     response.headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS

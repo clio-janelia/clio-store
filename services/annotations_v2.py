@@ -53,7 +53,7 @@ class Annotation(BaseModel):
 
 @router.get('/{dataset}', response_model=Dict[str, Annotation])
 @router.get('/{dataset}/', response_model=Dict[str, Annotation], include_in_schema=False)
-def get_annotations(dataset: str, groups: str, user: User = Depends(get_user)):
+def get_annotations(dataset: str, groups: str = "", user: User = Depends(get_user)):
     """ Returns all annotations for the user defined by the accompanying Authorization token.
         Return format is JSON object with annotations as enclosed key-value pairs.  Keys are
         used in move and delete operations.

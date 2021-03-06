@@ -4,11 +4,11 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from enum import Enum
-from typing import Dict, List, Any, Union, Optional
-from pydantic import BaseModel, ValidationError, validator, root_validator
+from typing import Dict, List, Any, Set, Union, Optional
+from pydantic import BaseModel, ValidationError, root_validator
 
 from config import *
-from dependencies import public_dataset, get_user, User
+from dependencies import get_membership, get_user, User
 from stores import firestore
 
 router = APIRouter()
@@ -53,25 +53,36 @@ class Annotation(BaseModel):
 
 @router.get('/{dataset}', response_model=Dict[str, Annotation])
 @router.get('/{dataset}/', response_model=Dict[str, Annotation], include_in_schema=False)
-def get_annotations(dataset: str, user: User = Depends(get_user)):
+def get_annotations(dataset: str, groups: str, user: User = Depends(get_user)):
     """ Returns all annotations for the user defined by the accompanying Authorization token.
         Return format is JSON object with annotations as enclosed key-value pairs.  Keys are
         used in move and delete operations.
+
+        Optional query string "groups" (names separated by commas) can result in larger set 
+        of annotations returned, corresponding to all annotations for the given groups.
+        The groups can only be ones in which the user is a member.
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+    output = {}
+    members = set([user.email])
+    groups_queried = set(groups.split(','))
+    if len(groups_queried) > 0:
+        groups_added = groups_queried.intersection(user.groups)
+        if len(groups_added) == 0:
+            raise HTTPException(status_code=400, detail=f"user {user.email} is not member of requested groups {groups_queried}")
+        members.update(get_membership(user, groups_added))
     try:
-        collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, user.email])
-        annotations_ref = collection.get()
-        output = {}
-        for annotation_ref in annotations_ref:
-            annotation_dict = annotation_ref.to_dict()
-            output[annotation_ref.id] = annotation_dict
-        return output
+        for member in members:
+            collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, member])
+            annotations_ref = collection.get()
+            for annotation_ref in annotations_ref:
+                annotation_dict = annotation_ref.to_dict()
+                output[annotation_ref.id] = annotation_dict
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}")
-    return
+        raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
+    return output
 
 class KeyResponse(BaseModel):
     key: str

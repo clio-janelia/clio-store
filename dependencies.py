@@ -43,6 +43,7 @@ async def add_CORS_header(request: Request, call_next):
 
 # reloads User and Dataset info from DB after this many seconds
 USER_REFRESH_SECS = 600.0
+MEMBERSHIPS_REFRESH_SECS = 600.0
 DATASET_REFRESH_SECS = 600.0
 
 class Layer(BaseModel):
@@ -111,6 +112,7 @@ class User(BaseModel):
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
+    groups: Optional[Set[str]] = set()
 
     def has_role(self, role: str, dataset: str = "") -> bool:
         if role in self.global_roles:
@@ -150,18 +152,29 @@ class User(BaseModel):
         return "admin" in self.global_roles
 
 class UserCache(BaseModel):
-    collection: Any
+    collection: Any # users collection
     cache: Dict[str, User] = {}
-    updated: Dict[str, float] = {} # per user update time
+    user_updated: Dict[str, float] = {}   # update time per user
+    memberships: Dict[str, Set[str]] = {} # set of user emails per group names
+    memberships_updated: float = 0.0      # last full update of memberships
 
     def cache_user(self, user: User):
-        self.updated[user.email] = time.time()
+        self.user_updated[user.email] = time.time()
+        for group in user.groups:
+            if group in self.memberships:
+                self.memberships[group].add(user.email)
+            else:
+                self.memberships[group] = set([user.email])
         if user.email == OWNER:
             user.global_roles.add("admin")
         self.cache[user.email] = user
 
     def uncache_user(self, email: str):
         if email in self.cache:
+            user = self.cache[email]
+            for group in user.groups:
+                if group in self.memberships:
+                    self.memberships[group].discard(email)
             del self.cache[email]
 
     def refresh_user(self, user_ref) -> User:
@@ -175,13 +188,13 @@ class UserCache(BaseModel):
         users = {}
         for user_ref in self.collection.get():
             users[user_ref.id] = self.refresh_user(user_ref)
-        print(f"Cached {len(self.cache)} user metadata.")
+        print(f"Cached {len(self.cache)} user metadata and {len(self.memberships)} groups")
         return users
 
     def get_user(self, email: str) -> User:
         user = self.cache.get(email)
         if user is not None:
-            age = time.time() - self.updated.get(email, 0)
+            age = time.time() - self.user_updated.get(email, 0)
             if age > USER_REFRESH_SECS:
                 user = None
         if user is None:
@@ -192,15 +205,36 @@ class UserCache(BaseModel):
                 user = User(email=email)
         return user
 
+    def get_membership(self, user: User, groups: Set[str]) -> Set[str]:
+        groups.intersection_update(user.groups)
+        if len(groups) == 0:
+            return set()
+        age = time.time() - self.memberships_updated
+        if age > MEMBERSHIPS_REFRESH_SECS:
+            self.refresh_cache()
+            self.memberships_updated == time.time()
+        members = set()
+        for group in groups:
+            if group in self.memberships:
+                members.update(self.memberships[group])
+        return members
 
 users = UserCache(collection = firestore.get_collection([CLIO_USERS]))
 users.refresh_cache()
+
+def get_membership(user: User, groups: Set[str]) -> Set[str]:
+    """
+    Return set of email addresses of members who are within the given groups
+    of the given user.  Only groups to which the user belongs are added to
+    the returned set.
+    """
+    return users.get_membership(user, groups)
 
 # handle OAuth2
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
-async def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
+def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
     """Check google token and return user roles and data."""
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
@@ -224,7 +258,7 @@ async def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
         raise credentials_exception
     return user
 
-async def get_user(current_user: User = Depends(get_user_from_token)):
+def get_user(current_user: User = Depends(get_user_from_token)):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user

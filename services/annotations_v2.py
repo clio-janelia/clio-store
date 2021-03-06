@@ -66,12 +66,13 @@ def get_annotations(dataset: str, groups: str = "", user: User = Depends(get_use
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
     output = {}
     members = set([user.email])
-    groups_queried = set(groups.split(','))
-    if len(groups_queried) > 0:
-        groups_added = groups_queried.intersection(user.groups)
-        if len(groups_added) == 0:
-            raise HTTPException(status_code=400, detail=f"user {user.email} is not member of requested groups {groups_queried}")
-        members.update(get_membership(user, groups_added))
+    if groups != "":
+        groups_queried = set(groups.split(','))
+        if len(groups_queried) > 0:
+            groups_added = groups_queried.intersection(user.groups)
+            if len(groups_added) == 0:
+                raise HTTPException(status_code=400, detail=f"user {user.email} is not member of requested groups {groups_queried}")
+            members.update(get_membership(user, groups_added))
     try:
         for member in members:
             collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, member])

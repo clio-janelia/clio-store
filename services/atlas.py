@@ -55,8 +55,8 @@ def get_atlas(dataset: str, user: User = Depends(get_user)):
 @router.put('/{dataset}/', include_in_schema=False)
 @router.post('/{dataset}/', include_in_schema=False)
 def post_atlas(dataset: str, x: int, y: int, z: int, payload: dict, user: User = Depends(get_user)) -> dict:
-    if "title" not in payload or "description" not in payload or "user" not in payload:
-        raise HTTPException(status_code=400, detail=f"POSTed object must include 'title', 'description', and 'user' properties")
+    if "title" not in payload or "user" not in payload:
+        raise HTTPException(status_code=400, detail=f"POSTed object must include 'title' and 'user' properties")
     if not user.can_write_own(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to write annotations in dataset {dataset}")
     if payload["user"] != user.email and not user.can_write_others(dataset):

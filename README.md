@@ -50,7 +50,7 @@ through environment variables.  These can be set for Cloud Run services through 
 
 Here is a list of variables:
 
-URL_PREFIX: a prefix to add to the API endpoint URLs.  (e.g., "/clio_toplevel")
+URL_PREFIX: a prefix to add to the API endpoint URLs, e.g. "/{URL_PREFIX}/v2/annotations"
 
 ALLOWED_ORIGINS: the allowed origins for CORS `Access-Control-Allow-Origin` header. 
 Default is the wildcard (*).
@@ -179,7 +179,7 @@ The "atlas" endpoint is very similar to annotations but it meant for special mar
 as a cross-dataset glossary.  Unlike 'annotations', 'atlas' requires the following JSON fields:
 
 	* title
-	* description
+	* user
 
 If the specified dataset is 'all' the annotations are returned across all datasets as a list.  The function
 also automatically adds a timestaamp, location, locationref (which is a string form of the location), a unique primary id, a verified status, and dataset field.

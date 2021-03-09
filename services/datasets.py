@@ -1,8 +1,8 @@
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import public_dataset, get_user, User
-from pydantic.typing import List
+from dependencies import public_dataset, get_user, User, Dataset
+from typing import Dict, List
 
 from google.cloud import firestore
 from google.cloud import storage
@@ -11,13 +11,13 @@ router = APIRouter()
 
 @router.post('')
 @router.post('/', include_in_schema=False)
-def post_datasets(datasets: dict, current_user: User = Depends(get_user)):
+def post_datasets(datasets: Dict[str, Dataset], current_user: User = Depends(get_user)):
     if not current_user.is_admin():
         raise HTTPException(status_code=401, detail="user must be admin to set dataset metadata")
     try:
         db = firestore.Client()
         for dataset_id, dataset in datasets.items():
-            db.collection(CLIO_DATASETS).document(dataset_id).set(dataset)
+            db.collection(CLIO_DATASETS).document(dataset_id).set(dataset.dict(exclude_unset=True))
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail="error in POSTing datasets")

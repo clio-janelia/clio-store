@@ -110,6 +110,8 @@ def get_dataset(dataset_id: str) -> Dataset:
 class User(BaseModel):
     email: str
     # email_verified: bool = False
+    name: Optional[str]  # full name
+    org: Optional[str]   # affiliated organization
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}

@@ -209,6 +209,7 @@ class UserCache(BaseModel):
         return user
 
     def get_membership(self, user: User, groups: Set[str]) -> Set[str]:
+        """Returns set of emails for groups given user belongs"""
         groups.intersection_update(user.groups)
         if len(groups) == 0:
             return set()

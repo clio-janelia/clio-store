@@ -3,12 +3,25 @@ from fastapi.responses import HTMLResponse
 
 from config import URL_PREFIX
 from dependencies import get_user, app
-from services import annotations_v2, annotations_v1, atlas, datasets, image_query, image_transfer, \
+from services import annotations_v3, annotations_v2, annotations_v1, atlas, datasets, image_query, image_transfer, \
     kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
 # versions: "clio_toplevel" is legacy v1, other versions are explicitly "v2", etc.
+app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/v3/annotations", dependencies=[Depends(get_user)])
+app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v3/atlas", dependencies=[Depends(get_user)])
+app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/v3/neuprint", dependencies=[Depends(get_user)])
+app.include_router(datasets.router, prefix=f"{URL_PREFIX}/v3/datasets", dependencies=[Depends(get_user)])
+app.include_router(image_query.router, prefix=f"{URL_PREFIX}/v3/signatures", dependencies=[Depends(get_user)])
+app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/v3/transfer", dependencies=[Depends(get_user)])
+app.include_router(kv.router, prefix=f"{URL_PREFIX}/v3/kv", dependencies=[Depends(get_user)])
+app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/v3/savedsearches", dependencies=[Depends(get_user)])
+app.include_router(users.router, prefix=f"{URL_PREFIX}/v3/users", dependencies=[Depends(get_user)])
+app.include_router(roles.router, prefix=f"{URL_PREFIX}/v3/roles", dependencies=[Depends(get_user)])
+app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v3/subvol", dependencies=[Depends(get_user)])
+app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v3/pull-request", dependencies=[Depends(get_user)])
+
 app.include_router(annotations_v2.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
 app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v2/atlas", dependencies=[Depends(get_user)])
 app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/v2/neuprint", dependencies=[Depends(get_user)])

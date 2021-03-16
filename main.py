@@ -3,24 +3,24 @@ from fastapi.responses import HTMLResponse
 
 from config import URL_PREFIX
 from dependencies import get_user, app
-from services import annotations_v3, annotations_v2, annotations_v1, atlas, datasets, image_query, image_transfer, \
+from services import annotations_v3, annotations_v2, atlas, datasets, image_query, image_transfer, \
     kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
-# versions: "clio_toplevel" is legacy v1, other versions are explicitly "v2", etc.
-app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/v3/annotations", dependencies=[Depends(get_user)])
-app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v3/atlas", dependencies=[Depends(get_user)])
-app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/v3/neuprint", dependencies=[Depends(get_user)])
-app.include_router(datasets.router, prefix=f"{URL_PREFIX}/v3/datasets", dependencies=[Depends(get_user)])
-app.include_router(image_query.router, prefix=f"{URL_PREFIX}/v3/signatures", dependencies=[Depends(get_user)])
-app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/v3/transfer", dependencies=[Depends(get_user)])
-app.include_router(kv.router, prefix=f"{URL_PREFIX}/v3/kv", dependencies=[Depends(get_user)])
-app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/v3/savedsearches", dependencies=[Depends(get_user)])
-app.include_router(users.router, prefix=f"{URL_PREFIX}/v3/users", dependencies=[Depends(get_user)])
-app.include_router(roles.router, prefix=f"{URL_PREFIX}/v3/roles", dependencies=[Depends(get_user)])
-app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v3/subvol", dependencies=[Depends(get_user)])
-app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v3/pull-request", dependencies=[Depends(get_user)])
+# versions are explicitly "v2", etc, and there is a "test" for ephemeral mods during testing.
+app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/test/annotations", dependencies=[Depends(get_user)])
+app.include_router(atlas.router, prefix=f"{URL_PREFIX}/test/atlas", dependencies=[Depends(get_user)])
+app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/test/neuprint", dependencies=[Depends(get_user)])
+app.include_router(datasets.router, prefix=f"{URL_PREFIX}/test/datasets", dependencies=[Depends(get_user)])
+app.include_router(image_query.router, prefix=f"{URL_PREFIX}/test/signatures", dependencies=[Depends(get_user)])
+app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/test/transfer", dependencies=[Depends(get_user)])
+app.include_router(kv.router, prefix=f"{URL_PREFIX}/test/kv", dependencies=[Depends(get_user)])
+app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/test/savedsearches", dependencies=[Depends(get_user)])
+app.include_router(users.router, prefix=f"{URL_PREFIX}/test/users", dependencies=[Depends(get_user)])
+app.include_router(roles.router, prefix=f"{URL_PREFIX}/test/roles", dependencies=[Depends(get_user)])
+app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/test/subvol", dependencies=[Depends(get_user)])
+app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/test/pull-request", dependencies=[Depends(get_user)])
 
 app.include_router(annotations_v2.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
 app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v2/atlas", dependencies=[Depends(get_user)])
@@ -34,17 +34,6 @@ app.include_router(users.router, prefix=f"{URL_PREFIX}/v2/users", dependencies=[
 app.include_router(roles.router, prefix=f"{URL_PREFIX}/v2/roles", dependencies=[Depends(get_user)])
 app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v2/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v2/pull-request", dependencies=[Depends(get_user)])
-
-app.include_router(annotations_v1.router, prefix=f"{URL_PREFIX}/clio_toplevel/annotations", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(atlas.router, prefix=f"{URL_PREFIX}/clio_toplevel/atlas", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/clio_toplevel/neuprint", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(datasets.router, prefix=f"{URL_PREFIX}/clio_toplevel/datasets", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(image_query.router, prefix=f"{URL_PREFIX}/clio_toplevel/signatures", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(image_transfer.router, prefix=f"{URL_PREFIX}/clio_toplevel/transfer", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(kv.router, prefix=f"{URL_PREFIX}/clio_toplevel/kv", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/clio_toplevel/savedsearches", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(users.router, prefix=f"{URL_PREFIX}/clio_toplevel/users", dependencies=[Depends(get_user)], include_in_schema=False)
-app.include_router(roles.router, prefix=f"{URL_PREFIX}/clio_toplevel/roles", dependencies=[Depends(get_user)], include_in_schema=False)
 
 # allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)

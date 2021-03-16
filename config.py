@@ -32,3 +32,6 @@ CLIO_KEYVALUE = "clio_keyvalue"
 
 # firestore pull requests
 CLIO_PULL_REQUESTS = "clio_pull_requests"
+
+# firestore subvolume edit collection
+CLIO_SUBVOL = "clio_subvol"

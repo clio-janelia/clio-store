@@ -16,8 +16,6 @@ from pydantic.typing import List, Set, Dict, Any, Optional
 from config import *
 from stores import firestore
 
-__DATASET_CACHE__ = None
-
 # stores reference to global APP
 app = FastAPI()
 
@@ -53,15 +51,15 @@ class Layer(BaseModel):
 
 class Dataset(BaseModel):
     description: str
-    location: str
+    location: str # grayscale refs
     public: Optional[bool] = False
-    layers: Optional[List[Layer]] = []
+    layers: Optional[List[Layer]] = []  # segmentation refs
     tag: Optional[str]
 
 class DatasetCache(BaseModel):
     collection: Any
     cache: Dict[str, Dataset] = {}
-    public_datasets: Set[str] = set()
+    public: Set[str] = set()
     updated: float = time.time() # update time for all dataset
 
     def refresh_cache(self):
@@ -71,7 +69,7 @@ class DatasetCache(BaseModel):
             dataset_obj = Dataset(**dataset_dict)
             self.cache[dataset_ref.id] = dataset_obj
             if dataset_obj.public:
-                self.public_datasets.add(dataset_ref.id)
+                self.public.add(dataset_ref.id)
         self.updated = time.time()
         print(f"Cached {len(self.cache)} dataset metadata.")
 
@@ -94,18 +92,22 @@ class DatasetCache(BaseModel):
             print(f"dataset cache last checked {age} secs ago... refreshing")
             self.refresh_cache()
 
-        return dataset_id in self.public_datasets    
+        return dataset_id in self.public    
 
 def public_dataset(dataset_id: str) -> bool:
     """Returns True if the given dataset is public"""
-    return __DATASET_CACHE__.is_public(dataset_id)
-
-# cache everything initially on startup of service
-__DATASET_CACHE__ = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
-__DATASET_CACHE__.refresh_cache()
+    return datasets.is_public(dataset_id)
 
 def get_dataset(dataset_id: str) -> Dataset:
-    return __DATASET_CACHE__.get_dataset(dataset_id)
+    """Returns dataset given the dataset id"""
+    return datasets.get_dataset(dataset_id)
+
+# cache everything initially on startup of service
+datasets = DatasetCache(collection = firestore.get_collection([CLIO_DATASETS]))
+datasets.refresh_cache()
+
+def get_dataset(dataset_id: str) -> Dataset:
+    return datasets.get_dataset(dataset_id)
 
 class User(BaseModel):
     email: str
@@ -124,14 +126,14 @@ class User(BaseModel):
             return False
         if dataset in self.datasets and role in self.datasets[dataset]:
             return True
-        if role == "clio_general" and dataset in __DATASET_CACHE__.public_datasets:
+        if role == "clio_general" and dataset in datasets.public:
             return True
         return False
 
     def can_read(self, dataset: str = "") -> bool:
         if "clio_general" in self.global_roles:
             return True
-        if dataset in __DATASET_CACHE__.public_datasets:
+        if dataset in datasets.public:
             return True
         dataset_roles = self.datasets.get(dataset, set())
         read_roles = set(["clio_read", "clio_general", "clio_write"])
@@ -140,7 +142,7 @@ class User(BaseModel):
     def can_write_own(self, dataset: str = "") -> bool:
         if "clio_general" in self.global_roles:
             return True
-        if dataset in __DATASET_CACHE__.public_datasets:
+        if dataset in datasets.public:
             return True
         dataset_roles = self.datasets.get(dataset, set())
         write_roles = set(["clio_general", "clio_write"])
@@ -191,6 +193,7 @@ class UserCache(BaseModel):
         users = {}
         for user_ref in self.collection.get():
             users[user_ref.id] = self.refresh_user(user_ref)
+        self.memberships_updated == time.time()
         print(f"Cached {len(self.cache)} user metadata and {len(self.memberships)} groups")
         return users
 
@@ -216,7 +219,6 @@ class UserCache(BaseModel):
         age = time.time() - self.memberships_updated
         if age > MEMBERSHIPS_REFRESH_SECS:
             self.refresh_cache()
-            self.memberships_updated == time.time()
         members = set()
         for group in groups:
             if group in self.memberships:

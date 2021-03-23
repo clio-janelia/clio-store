@@ -18,7 +18,7 @@ grpcio==1.33.2
 h11==0.11.0
 idna==2.10
 itsdangerous==1.1.0
-Jinja2==2.11.2
+Jinja2>=2.11.3
 MarkupSafe==1.1.1
 proto-plus==1.11.0
 protobuf==3.14.0
@@ -32,6 +32,6 @@ rsa==4.6
 six==1.15.0
 starlette==0.13.6
 typing-extensions==3.7.4.3
-urllib3==1.26.2
+urllib3>=1.26.4
 uvicorn==0.13.1
 Werkzeug==1.0.1

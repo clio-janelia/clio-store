@@ -19,7 +19,7 @@ app.include_router(kv.router, prefix=f"{URL_PREFIX}/test/kv", dependencies=[Depe
 app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/test/savedsearches", dependencies=[Depends(get_user)])
 app.include_router(users.router, prefix=f"{URL_PREFIX}/test/users", dependencies=[Depends(get_user)])
 app.include_router(roles.router, prefix=f"{URL_PREFIX}/test/roles", dependencies=[Depends(get_user)])
-app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/test/subvol", dependencies=[Depends(get_user)])
+#app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/test/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/test/pull-request", dependencies=[Depends(get_user)])
 
 app.include_router(annotations_v2.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
@@ -32,7 +32,7 @@ app.include_router(kv.router, prefix=f"{URL_PREFIX}/v2/kv", dependencies=[Depend
 app.include_router(savedsearches.router, prefix=f"{URL_PREFIX}/v2/savedsearches", dependencies=[Depends(get_user)])
 app.include_router(users.router, prefix=f"{URL_PREFIX}/v2/users", dependencies=[Depends(get_user)])
 app.include_router(roles.router, prefix=f"{URL_PREFIX}/v2/roles", dependencies=[Depends(get_user)])
-app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v2/subvol", dependencies=[Depends(get_user)])
+#app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v2/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v2/pull-request", dependencies=[Depends(get_user)])
 app.include_router(server.router, prefix=f"{URL_PREFIX}/v2/server", dependencies=[Depends(get_user)])
 

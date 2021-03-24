@@ -45,9 +45,10 @@ MEMBERSHIPS_REFRESH_SECS = 600.0
 DATASET_REFRESH_SECS = 600.0
 
 class Layer(BaseModel):
-    name: str      # Example: "segmentation-v1.2"
-    location: str  # Example: "gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation"
-    type: str      # Example: "segmentation", "image", or "annotation"
+    name: str               # Example: "segmentation-v1.2"
+    location: str           # Example: "gs://neuroglancer-janelia-flyem-hemibrain/v1.2/segmentation"
+    type: str               # Example: "segmentation", "image", or "annotation"
+    roles: Set[str] = set() # Example: ["mergeable"]
 
 class Dataset(BaseModel):
     description: str

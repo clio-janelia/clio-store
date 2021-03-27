@@ -45,3 +45,39 @@ def pull_request(req: PullRequest, user: User = Depends(get_user)):
     except Exception as e:
         print(e)
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=f"error attempting pull request: {e}")
+
+@router.get('')
+@router.get('/', include_in_schema=False)
+def pull_request(user_email: str, user: User = Depends(get_user)):
+    """Returns user's pull requests.  If "user_email" query string is provided, that user's pull
+       request is returned if the requester has sufficient permission.
+       
+       {"kv/scope1/key1": value1, "kv/scope2/key2": value2}
+    """
+    if user_email == "":
+        user_email = user.email
+    authorized = (user_email == user.email or user.is_admin())
+    if not authorized:
+        raise HTTPException(status_code=401, detail=f"no permission to access pull requests for user {user_email}")
+    user_prs = {}
+    try:       
+        collection = firestore.get_collection([CLIO_PULL_REQUESTS])
+        user_ref = collection.document(user_email).get()
+        # if not user_ref.exists:
+        #     raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"no pull requests found for {user_email}")
+        pr_types = user_ref.reference.collections()
+        print(f"For user {user_email}: {pr_types}")
+        print(f"")
+        for pr_type in pr_types:
+            prs = pr_type.stream()
+            cur_prs = []
+            for pr in prs:
+                cur_prs.append(pr.to_dict())
+            user_prs[pr_type.id] = cur_prs
+    except HTTPException as e:
+        raise e
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=f"error attempting pull request: {e}")
+
+    return user_prs

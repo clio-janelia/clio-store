@@ -50,6 +50,7 @@ class Dataset(BaseModel):
     layers: Optional[List[dict]] = []  # segmentation refs
     tag: Optional[str]
     dimensions: Optional[dict]
+    position: Optional[List[float]]
     crossSectionScale: Optional[float]
     projectionScale: Optional[float]
     location: Optional[str] # legacy grayscale image ref that will be moved to layers with type=image.

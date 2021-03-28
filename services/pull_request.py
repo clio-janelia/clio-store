@@ -50,34 +50,43 @@ def pull_request(req: PullRequest, user: User = Depends(get_user)):
 @router.get('/', include_in_schema=False)
 def pull_request(user_email: str, user: User = Depends(get_user)):
     """Returns user's pull requests.  If "user_email" query string is provided, that user's pull
-       request is returned if the requester has sufficient permission.
+       request is returned if the requester has sufficient permission.  All pull requests can
+       be obtained by using the query string "user_email=all" if the user is admin.
        
        {"kv/scope1/key1": value1, "kv/scope2/key2": value2}
     """
-    if user_email == "":
-        user_email = user.email
-    authorized = (user_email == user.email or user.is_admin())
-    if not authorized:
-        raise HTTPException(status_code=401, detail=f"no permission to access pull requests for user {user_email}")
-    user_prs = {}
+
+    prs = {}
     try:       
         collection = firestore.get_collection([CLIO_PULL_REQUESTS])
-        user_ref = collection.document(user_email).get()
-        # if not user_ref.exists:
-        #     raise HTTPException(status_code=HTTPStatus.NOT_FOUND, detail=f"no pull requests found for {user_email}")
-        pr_types = user_ref.reference.collections()
-        print(f"For user {user_email}: {pr_types}")
-        print(f"")
-        for pr_type in pr_types:
-            prs = pr_type.stream()
-            cur_prs = []
-            for pr in prs:
-                cur_prs.append(pr.to_dict())
-            user_prs[pr_type.id] = cur_prs
+        emails = set()
+        if user_email == "":
+            emails = set([user.email])
+        elif user_email == "all":
+            if not user.is_admin():
+                raise HTTPException(status_code=401, detail=f"no permission to access all pull requests")
+            emails = [ref.id for ref in collection.list_documents()]
+        else:
+            authorized = (user_email == user.email or user.is_admin())
+            if not authorized:
+                raise HTTPException(status_code=401, detail=f"no permission to access pull requests for user {user_email}")
+            emails = set([user_email])
+
+        for email in emails:
+            user_ref = collection.document(email).get()
+            user_prs = {}
+            pr_types = user_ref.reference.collections()
+            for pr_type in pr_types:
+                user_prs[pr_type.id] = {}
+                for pr in pr_type.stream():
+                    user_prs[pr_type.id][pr.id] = pr.to_dict()
+            if len(user_prs) != 0:
+                prs[email] = user_prs
+
     except HTTPException as e:
         raise e
     except Exception as e:
         print(e)
         raise HTTPException(status_code=HTTPStatus.BAD_REQUEST, detail=f"error attempting pull request: {e}")
 
-    return user_prs
+    return prs

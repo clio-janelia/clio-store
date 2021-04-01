@@ -45,7 +45,14 @@ MEMBERSHIPS_REFRESH_SECS = 600.0
 DATASET_REFRESH_SECS = 600.0
 
 class Dataset(BaseModel):
+    title: Optional[str]
     description: str
+
+    mainLayer: Optional[str]
+    neuroglancer: Optional[dict]
+    versions: Optional[list]
+
+    # legacy -- will be removed after UI accomodates new schema
     public: Optional[bool] = False
     layers: Optional[List[dict]] = []  # segmentation refs
     tag: Optional[str]

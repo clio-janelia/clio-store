@@ -22,7 +22,7 @@ app.include_router(roles.router, prefix=f"{URL_PREFIX}/test/roles", dependencies
 #app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/test/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/test/pull-request", dependencies=[Depends(get_user)])
 
-app.include_router(annotations_v2.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
+app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
 app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v2/atlas", dependencies=[Depends(get_user)])
 app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/v2/neuprint", dependencies=[Depends(get_user)])
 app.include_router(datasets.router, prefix=f"{URL_PREFIX}/v2/datasets", dependencies=[Depends(get_user)])

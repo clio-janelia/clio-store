@@ -4,7 +4,8 @@ from fastapi.responses import HTMLResponse
 from config import URL_PREFIX
 from dependencies import get_user, app
 from services import annotations_v3, annotations_v2, atlas, datasets, image_query, image_transfer, \
-    kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request, server
+    kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request, server, \
+    annotations_global    
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
@@ -22,6 +23,7 @@ app.include_router(roles.router, prefix=f"{URL_PREFIX}/test/roles", dependencies
 #app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/test/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/test/pull-request", dependencies=[Depends(get_user)])
 
+app.include_router(annotations_global.router, prefix=f"{URL_PREFIX}/v2/json-annotations", dependencies=[Depends(get_user)])
 app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])
 app.include_router(atlas.router, prefix=f"{URL_PREFIX}/v2/atlas", dependencies=[Depends(get_user)])
 app.include_router(neuprint.router, prefix=f"{URL_PREFIX}/v2/neuprint", dependencies=[Depends(get_user)])

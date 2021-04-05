@@ -14,7 +14,7 @@ from google.cloud.firestore import Query
 
 router = APIRouter()
 
-ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array-contains', 'array-contains-any', 'in', 'not-in'])
+ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
 
 def reconcile_single_annotation(results, version, changes):
     """for given results (list of snapshsots with decreasing timestamp), return 

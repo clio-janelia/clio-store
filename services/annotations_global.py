@@ -10,8 +10,34 @@ from pydantic import BaseModel, ValidationError, root_validator
 from config import *
 from dependencies import get_membership, get_user, User
 from stores import firestore
+from google.cloud.firestore import Query
 
 router = APIRouter()
+
+def reconcile_single_annotation(results, version, changes):
+    """for given results (list of snapshsots), find best object that matches the given version
+    
+    Args:
+        results (Query results): assumed to be ordered by descending timestamp
+        version (str): version desired, assumed that later versions are 
+            lexicographically larger and None or empty string return most recent
+            version.
+        changes (bool): if true, return all changes to the annotation.
+    """
+    if changes:
+        output = []
+        for doc in results:
+            data = doc.to_dict()
+            if version is None or version == "" or data["_version"] <= version:
+                output.append(data)
+        return output
+
+    for doc in results:
+        data = doc.to_dict()
+        if version is None or version == "" or data["_version"] <= version:
+            return data
+
+    return {}
 
 def write_annotation(version, collection, data, user: User):
     data["_version"] = version
@@ -21,11 +47,11 @@ def write_annotation(version, collection, data, user: User):
         collection.add(data)
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail=f"error in writing annotation to dataset {dataset}: {e}\n{data}")
+        raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
 
 @router.get('/{dataset}/{annotation_type}/{id}', response_model=Union[List, dict])
 @router.get('/{dataset}/{annotation_type}/{id}/', response_model=Union[List, dict], include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+def get_annotations(dataset: str, annotation_type: str, id: int, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
     """ Returns the neuron annotation associated with the given id.
         
     Query strings:
@@ -43,8 +69,8 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        query_ref = collection.where(id_field, '==', id)
-        results = query_ref.get()
+        results = collection.where(id_field, u'==', id).order_by('_timestamp', direction=Query.DESCENDING).get()
+        return reconcile_single_annotation(results, version, changes)
 
     except Exception as e:
         print(e)

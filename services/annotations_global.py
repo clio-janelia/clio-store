@@ -118,7 +118,7 @@ def get_annotations(dataset: str, annotation_type: str, id: int, version: str = 
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
 class QueryRequest(BaseModel):
-    fieldPath: str
+    field: str
     op: str
     value: Any
 
@@ -150,7 +150,7 @@ def get_annotations(dataset: str, annotation_type: str, query: QueryRequest, ver
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        results = collection.where(query.fieldPath, query.op, query.value).get()
+        results = collection.where(query.field, query.op, query.value).get()
         output = reconcile_annotations(results, id_field, version, changes)
         return output
 

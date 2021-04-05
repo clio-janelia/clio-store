@@ -13,6 +13,43 @@ from stores import firestore
 
 router = APIRouter()
 
+def write_annotation(version, collection, data, user: User):
+    data["_version"] = version
+    data["_timestamp"] = time.time()
+    data["_user"] = user.email
+    try:
+        collection.add(data)
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=400, detail=f"error in writing annotation to dataset {dataset}: {e}\n{data}")
+
+@router.get('/{dataset}/{annotation_type}/{id}', response_model=Union[List, dict])
+@router.get('/{dataset}/{annotation_type}/{id}/', response_model=Union[List, dict], include_in_schema=False)
+def get_annotations(dataset: str, annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+    """ Returns the neuron annotation associated with the given id.
+        
+    Query strings:
+        version (str): If supplied, annotations are for the given dataset version.
+
+        changes (bool): If True, returns list of changes to this annotation across all versions.
+
+        id_field (str): The id field name (default: "bodyid")
+
+    Returns:
+        A JSON list (if changes requested) or JSON object if not.
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    try:
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+        query_ref = collection.where(id_field, '==', id)
+        results = query_ref.get()
+
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
+
 
 @router.put('/{dataset}/{annotation_type}')
 @router.post('/{dataset}/{annotation_type}')

@@ -35,12 +35,20 @@ def reconcile_single_annotation(results, version, changes):
                 output.append(data)
         return output
 
+    best_version = ""
+    best_data = {}
+    versionless = (version is None or version == "")
     for doc in results:
         data = doc.to_dict()
-        if version is None or version == "" or data["_version"] <= version:
-            return data
+        if versionless:
+            if best_version < data["_version"]:
+                best_version = data["_version"]
+                best_data = data
+        elif data["_version"] <= version and data["_version"] > best_version:
+            best_version = data["_version"]
+            best_data = data
 
-    return {}
+    return best_data
 
 def reconcile_annotations(results, id_field: str, version, changes):
     """for given results (list of snapshsots without timestamp ordering), 
@@ -64,16 +72,17 @@ def reconcile_annotations(results, id_field: str, version, changes):
 
     best_per_id = {}
     best_timestamp_per_id = {}
+    best_version_per_id = {}
     for doc in results:
         data = doc.to_dict()
         if version is None or version == "" or data["_version"] <= version:
             if id_field not in data:
                 raise HTTPException(status_code=400, detail=f"id field {id_field} not present in annotation: {data}")
             id = data[id_field]
-            if id not in best_per_id or data["_timestamp"] > best_timestamp_per_id[id]:
+            if id not in best_per_id or data["_version"] > best_version_per_id[id] or (data["_version"] == best_version_per_id[id] and data["_timestamp"] > best_timestamp_per_id[id]):
                 best_per_id[id] = data
                 best_timestamp_per_id[id] = data["_timestamp"]
-                print(f"id {id} -> data {data}")
+                best_version_per_id[id] = data["_version"]
 
     return best_per_id
 
@@ -163,7 +172,7 @@ def get_annotations(dataset: str, annotation_type: str, query: QueryRequest, ver
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[dict, List[dict]], version: str = "", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation_type: str, payload: Union[dict, List[dict]], version: str = "v0.0", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
     """

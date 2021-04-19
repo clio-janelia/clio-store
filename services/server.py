@@ -9,7 +9,7 @@ from stores import firestore
 
 router = APIRouter()
 
-@router.post('refresh-caches')
+@router.post('/refresh-caches')
 @router.post('/refresh-caches', include_in_schema=False)
 async def refresh_caches(user: User = Depends(get_user)):
     """ Refresh caches rather than wait for timer. """

@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Set, Union, Optional
 from pydantic import BaseModel, ValidationError, root_validator
 
 from config import *
-from dependencies import get_membership, get_user, User
+from dependencies import group_members, get_user, User
 from stores import firestore
 
 router = APIRouter()
@@ -83,7 +83,7 @@ def get_annotations(dataset: str, groups: str = "", user: User = Depends(get_use
             groups_added = groups_queried.intersection(user.groups)
             if len(groups_added) == 0:
                 raise HTTPException(status_code=400, detail=f"user {user.email} is not member of requested groups {groups_queried}")
-            members.update(get_membership(user, groups_added))
+            members.update(group_members(user, groups_added))
     try:
         for member in members:
             collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, member])

@@ -217,7 +217,7 @@ class UserCache(BaseModel):
                 user = User(email=email)
         return user
 
-    def get_membership(self, user: User, groups: Set[str]) -> Set[str]:
+    def group_members(self, user: User, groups: Set[str]) -> Set[str]:
         """Returns set of emails for groups given user belongs"""
         groups.intersection_update(user.groups)
         if len(groups) == 0:
@@ -234,13 +234,13 @@ class UserCache(BaseModel):
 users = UserCache(collection = firestore.get_collection([CLIO_USERS]))
 users.refresh_cache()
 
-def get_membership(user: User, groups: Set[str]) -> Set[str]:
+def group_members(user: User, groups: Set[str]) -> Set[str]:
     """
     Return set of email addresses of members who are within the given groups
     of the given user.  Only groups to which the user belongs are added to
     the returned set.
     """
-    return users.get_membership(user, groups)
+    return users.group_members(user, groups)
 
 # handle OAuth2
 

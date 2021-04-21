@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Set, Union, Optional
 from pydantic import BaseModel, ValidationError, validator
 
 from config import *
-from dependencies import get_membership, get_user, User
+from dependencies import get_user, User
 from stores import firestore
 from google.cloud.firestore import Query
 
@@ -96,10 +96,10 @@ def write_annotation(version, collection, data, user: User):
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
-
+    
 @router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])
 @router.get('/{dataset}/{annotation_type}/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, id: int, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+def get_annotations(dataset: str, annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
     """ Returns the neuron annotation associated with the given id.
         
     Query strings:
@@ -112,15 +112,33 @@ def get_annotations(dataset: str, annotation_type: str, id: int, version: str = 
 
     Returns:
 
-        A JSON list (if changes requested) or JSON object if not.
+        A JSON list (if changes requested or multiple ids given) or JSON object if not.
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
 
+    if "," in id:
+        id_strs = id.split(",")
+        ids = [int(id_str) for id_str in id_strs]
+    else:
+        ids = [int(id)]
+    print(ids)
+    
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        results = collection.where(id_field, u'==', id).order_by('_timestamp', direction=Query.DESCENDING).get()
-        return reconcile_single_annotation(results, version, changes)
+        if len(ids) == 1:
+            results = collection.where(id_field, u'==', ids[0]).order_by('_timestamp', direction=Query.DESCENDING).get()
+            return reconcile_single_annotation(results, version, changes)
+        else:
+            data = []
+            for i in ids:
+                results = collection.where(id_field, u'==', i).order_by('_timestamp', direction=Query.DESCENDING).get()
+                reconciled = reconcile_single_annotation(results, version, changes)
+                if changes:
+                    data.extend(reconciled)
+                else:
+                    data.append(reconciled)
+            return data
 
     except Exception as e:
         print(e)

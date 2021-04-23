@@ -1,6 +1,6 @@
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import status, APIRouter, Depends, HTTPException
 from fastapi.encoders import jsonable_encoder
 
 from enum import Enum
@@ -16,7 +16,23 @@ router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
 
-def reconcile_single_annotation(results, version, changes):
+def remove_reserved_fields(data: dict):
+    """Remove any reserved fields"""
+    del_list = []
+    for field in data:
+        if field.startswith("_"):
+            del_list.append(field)
+    for field in del_list:
+        del data[field]
+
+def check_reserved_fields(data: List[dict]):
+    """Check for reserved fields and raise HTTPException if present"""
+    for obj in data:
+        for field in obj:
+            if field.startswith("_"):
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"cannot have fields starting with underscore since those names are reserved")
+
+def reconcile_single_id(results, version, changes):
     """for given results (list of snapshsots with decreasing timestamp), return 
        best object that matches the given version
     
@@ -32,6 +48,7 @@ def reconcile_single_annotation(results, version, changes):
         for doc in results:
             data = doc.to_dict()
             if version is None or version == "" or data["_version"] <= version:
+                remove_reserved_fields(data)
                 output.append(data)
         return output
 
@@ -47,44 +64,62 @@ def reconcile_single_annotation(results, version, changes):
         elif data["_version"] <= version and data["_version"] > best_version:
             best_version = data["_version"]
             best_data = data
-
+    remove_reserved_fields(best_data)
     return best_data
 
-def reconcile_annotations(results, id_field: str, version, changes):
-    """for given results (list of snapshsots without timestamp ordering), 
-       return list of objects for given version
+
+def reconcile_query(results, id_field: str, version: str, changes: bool):
+    """Returns list of annotations for given version.
     
     Args:
-        results (Query results): assumed to be ordered by descending timestamp
+        results (Query results): list of JSON objects that meet query.
         id_field (str): field that represents id where versioning is handled across it.
         version (str): version desired, assumed that later versions are 
             lexicographically larger and None or empty string return most recent
             version.
-        changes (bool): if true, return all changes to the annotation.
+        changes (bool): if true, return all changes to the annotations.
     """
+    # group docs by id field
     if changes:
         output = []
         for doc in results:
             data = doc.to_dict()
             if version is None or version == "" or data["_version"] <= version:
+                remove_reserved_fields(data)
                 output.append(data)
         return output
 
-    best_per_id = {}
-    best_timestamp_per_id = {}
-    best_version_per_id = {}
+    # prune by version
+    pruned_results = []
     for doc in results:
         data = doc.to_dict()
         if version is None or version == "" or data["_version"] <= version:
             if id_field not in data:
                 raise HTTPException(status_code=400, detail=f"id field {id_field} not present in annotation: {data}")
-            id = data[id_field]
-            if id not in best_per_id or data["_version"] > best_version_per_id[id] or (data["_version"] == best_version_per_id[id] and data["_timestamp"] > best_timestamp_per_id[id]):
-                best_per_id[id] = data
-                best_timestamp_per_id[id] = data["_timestamp"]
-                best_version_per_id[id] = data["_version"]
+            if "_timestamp" not in data:
+                raise HTTPException(status_code=400, detail=f"internal timestamp not present in annotation: {data}")
+            pruned_results.append(data)
 
-    return best_per_id
+    if len(pruned_results) == 0:
+        return []
+    elif len(pruned_results) == 1:
+        remove_reserved_fields(pruned_results[0])
+        return pruned_results
+    
+    # sort by timestamp
+    pruned_results.sort(key=lambda x: x["_timestamp"])
+
+    # determine best annotations per id field
+    best = {}
+    for data in pruned_results:
+        id = data[id_field]
+        if id not in best:
+            best[id] = data
+        elif data["_version"] > best[id]["_version"] or (data["_version"] == best[id]["_version"] and data["_timestamp"] > best[id]["_timestamp"]):
+            best[id].update(data)
+    for data in best.values():
+        remove_reserved_fields(data)
+    return list(best.values())
 
 
 def write_annotation(version, collection, data, user: User):
@@ -127,13 +162,13 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
         if len(ids) == 1:
-            results = collection.where(id_field, u'==', ids[0]).order_by('_timestamp', direction=Query.DESCENDING).get()
-            return reconcile_single_annotation(results, version, changes)
+            results = collection.where(id_field, u'==', ids[0]).get()
+            return reconcile_single_id(results, version, changes)
         else:
             data = []
             for i in ids:
-                results = collection.where(id_field, u'==', i).order_by('_timestamp', direction=Query.DESCENDING).get()
-                reconciled = reconcile_single_annotation(results, version, changes)
+                results = collection.where(id_field, u'==', i).get()
+                reconciled = reconcile_single_id(results, version, changes)
                 if changes:
                     data.extend(reconciled)
                 else:
@@ -144,21 +179,15 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
-class QueryRequest(BaseModel):
-    field: str
-    op: str
-    value: Any
-
-    @validator('op')
-    def restrict_ops(cls, v):
-        if v not in ALLOWED_QUERY_OPS:
-            raise ValidationError("illegal query op: {v}")
-        return v
-
-@router.post('/{dataset}/{annotation_type}/query')
-@router.post('/{dataset}/{annotation_type}/query/', include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, query: QueryRequest, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+@router.post('/{dataset}/{annotation_type}/query', response_model=List[dict])
+@router.post('/{dataset}/{annotation_type}/query/', response_model=List[dict], include_in_schema=False)
+def get_annotations(dataset: str, annotation_type: str, query: dict, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
+
+    The JSON query format uses field names as the keys, and desired values.
+    Example:
+    { "bodyid": 23, "hemilineage": "0B", ... }
+    Each field value must be true, i.e., the conditions or ANDed together.
         
     Query strings:
 
@@ -170,15 +199,26 @@ def get_annotations(dataset: str, annotation_type: str, query: QueryRequest, ver
 
     Returns:
 
-        A JSON list (if changes requested) or JSON object if not.
+        A JSON list of objects.
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        results = collection.where(query.field, query.op, query.value).get()
-        output = reconcile_annotations(results, id_field, version, changes)
+        q = collection
+        for key in query:
+            if isinstance(query[key], list):
+                if len(query[key]) > 10:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
+                op = "in"
+            else:
+                op = "=="
+            q = q.where(key, op, query[key])
+        results = q.get()
+        if len(results) == 0:
+            return []
+        output = reconcile_query(results, id_field, version, changes)
         return output
 
     except Exception as e:
@@ -201,11 +241,11 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[dict, Li
         raise HTTPException(status_code=400, detail=f"error in getting annotations collection for dataset {dataset}: {e}")
 
     if isinstance(payload, dict):
-        write_annotation(version, collection, payload, user)
-    else:
-        num = 0
-        for annotation in payload:
-            write_annotation(version, collection, annotation, user)
-            num += 1
-            if num % 100 == 0:
-                print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")
+        payload = [payload]
+    check_reserved_fields(payload)
+    num = 0
+    for annotation in payload:
+        write_annotation(version, collection, annotation, user)
+        num += 1
+        if num % 100 == 0:
+            print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")

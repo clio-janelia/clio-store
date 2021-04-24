@@ -97,9 +97,11 @@ def run_query_with_ids(query, ids: List[int], id_field: str, version: str, chang
             op = 'in'
         results = query.where(id_field, op, value).get()
         if changes:
-            output.append(get_changes(results, version))
+            data = get_changes(results, version)
         else:
-            output.extend(reconcile_query(results, id_field, version))
+            data = reconcile_query(results, id_field, version)
+        if len(data) != 0:
+            output.extend(data)
 
     return output
 

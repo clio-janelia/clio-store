@@ -41,11 +41,13 @@ def get_changes(results, version: str):
             output.append(data)
     return output
 
-def reconcile_query(results, id_field: str, version: str):
-    """Returns dict of id key with value of annotations for given version.
+def reconcile_query(results, nonid_query: dict, id_field: str, version: str):
+    """Returns list of annotations for given version where annotations for each id
+       have been coalesced per id.
     
     Args:
         results (Query results): list of JSON objects that meet query.
+        nonid_query (dict): field constraints to be checked
         id_field (str): field that represents id where versioning is handled across it.
         version (str): version desired, assumed that later versions are 
             lexicographically larger and None or empty string return most recent
@@ -80,12 +82,24 @@ def reconcile_query(results, id_field: str, version: str):
             best[id] = data
         elif data["_version"] > best[id]["_version"] or (data["_version"] == best[id]["_version"] and data["_timestamp"] > best[id]["_timestamp"]):
             best[id].update(data)
+    unmatched_ids = set()
     for data in best.values():
-        remove_reserved_fields(data)
+        unmatched = False
+        for field in nonid_query:
+            if field in data and data[field] != nonid_query[field]:
+                unmatched = True
+                break
+        if unmatched:
+            unmatched_ids.add(data[id_field])
+        else:
+            remove_reserved_fields(data)
+    for id in unmatched_ids:
+        del best[id]
     return list(best.values())
 
-def run_query_with_ids(query, ids: List[int], id_field: str, version: str, changes: bool):
+def run_query_on_ids(collection, nonid_query: dict, ids: List[int], id_field: str, version: str, changes: bool):
     """ Run query (without id_field selector) across an arbitrary number of ids. """
+    t0 = time.perf_counter()
     output = []
     for start in range(0, len(ids), 10):
         remain = min(len(ids) - start, 10)
@@ -95,15 +109,34 @@ def run_query_with_ids(query, ids: List[int], id_field: str, version: str, chang
         else:
             value = ids[start:start+remain]
             op = 'in'
-        results = query.where(id_field, op, value).get()
+        results = collection.where(id_field, op, value).get()
         if changes:
             data = get_changes(results, version)
         else:
-            data = reconcile_query(results, id_field, version)
+            data = reconcile_query(results, nonid_query, id_field, version)
         if len(data) != 0:
             output.extend(data)
 
+    elapsed = time.perf_counter() - t0
+    print(f"Ran query on {len(ids)} ids and found {len(output)} annotations that matched: {elapsed:0.4f} sec")
     return output
+
+def get_ids_fulfilling_query(nonid_query, id_field: str, version: str):
+    """ Run query (without id_field selector) and get all ids that meet criteria. """
+    t0 = time.perf_counter()
+    results = nonid_query.get()
+    ids = set()
+    for doc in results:
+        data = doc.to_dict()
+        if version is None or version == "" or data["_version"] <= version:
+            if id_field not in data:
+                raise HTTPException(status_code=400, detail=f"id field {id_field} not present in annotation: {data}")
+            if "_timestamp" not in data:
+                raise HTTPException(status_code=400, detail=f"internal timestamp not present in annotation: {data}")
+            ids.add(data[id_field])
+    elapsed = time.perf_counter() - t0
+    print(f"Got {len(ids)} ids that fulfill non-id query: {elapsed:0.4f} sec")
+    return list(ids)
 
 def write_annotation(version, collection, data, user: User):
     data["_version"] = version
@@ -142,8 +175,8 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         ids = [int(id)]
     
     try:
-        q = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        return run_query_with_ids(q, ids, id_field, version, changes)
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+        return run_query_on_ids(collection, {}, ids, id_field, version, changes)
 
     except Exception as e:
         print(e)
@@ -176,8 +209,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        q = collection
-        conditionals = 0
+        nonid_query = collection
         ids = []
         for key in query:
             if key == id_field:
@@ -188,25 +220,21 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
                 else:
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"id field must be int or list of ints, got: {query[key]}")
                 continue
-            if isinstance(query[key], list):
-                if len(query[key]) > 10:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
-                op = "in"
             else:
-                op = "=="
-            q = q.where(key, op, query[key])
-            conditionals += 1
+                if isinstance(query[key], list):
+                    if len(query[key]) > 10:
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
+                    op = "in"
+                else:
+                    op = "=="
+                nonid_query = nonid_query.where(key, op, query[key])
 
         if len(ids) == 0:
-            if conditionals == 0:
-                return []
-            results = q.get()
-            if changes:
-                return get_changes(results, version)
-            else:
-                return reconcile_query(results, id_field, version)
-        else: # add ability to have query for more than 10 body ids.
-            return run_query_with_ids(q, ids, id_field, version, changes)
+            # Run query to get the ids that meet the query
+            ids = get_ids_fulfilling_query(nonid_query, id_field, version)
+        
+        # Get all of each body id's annotations and manually test against query
+        return run_query_on_ids(collection, query, ids, id_field, version, changes)
 
 
     except Exception as e:

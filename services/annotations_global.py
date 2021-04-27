@@ -218,7 +218,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[dict, List[dict]], version: str = "v0.0", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], version: str = "v0.0", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
     """

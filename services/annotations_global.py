@@ -224,7 +224,11 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
                 if isinstance(query[key], list):
                     if len(query[key]) > 10:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
-                    op = "in"
+                    if len(query[key]) == 1:  # counters apparent issue with using 'in'. TODO: determine underlying issue.
+                        op = "=="
+                        query[key] = query[key][0]
+                    else:
+                        op = "in"
                 else:
                     op = "=="
                 nonid_query = nonid_query.where(key, op, query[key])

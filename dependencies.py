@@ -16,6 +16,8 @@ from pydantic.typing import List, Set, Dict, Any, Optional
 from config import *
 from stores import firestore
 
+import jwt
+
 # stores reference to global APP
 app = FastAPI()
 
@@ -247,23 +249,34 @@ def group_members(user: User, groups: Set[str]) -> Set[str]:
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 
 def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
-    """Check google token and return user roles and data."""
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    try:
-        idinfo = id_token.verify_oauth2_token(token, requests.Request())
-        email = idinfo["email"].lower()
-    except exceptions.GoogleAuthError:
-        raise credentials_exception
-    except:
-        print(f"no user token so using TEST_USER {TEST_USER}")
-        if TEST_USER is not None:
-            email = TEST_USER
-        else:
+    """Check token (either FlyEM or Google identity) and return user roles and data."""
+    email = None
+    if FLYEM_SECRET:
+        try:
+            decoded = jwt.decode(token, FLYEM_SECRET, algorithms="HS256")
+            exp = decoded.get('exp', 0)
+            if time.time() <= exp:
+                email = decoded.get('email', None)
+        except:
+            pass
+
+    if not email:
+        credentials_exception = HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        try:
+            idinfo = id_token.verify_oauth2_token(token, requests.Request())
+            email = idinfo["email"].lower()
+        except exceptions.GoogleAuthError:
             raise credentials_exception
+        except:
+            print(f"no user token so using TEST_USER {TEST_USER}")
+            if TEST_USER is not None:
+                email = TEST_USER
+            else:
+                raise credentials_exception
 
     user = users.get_user(email)
     if user is None:

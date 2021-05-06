@@ -12,6 +12,9 @@ OWNER = os.environ.get("OWNER", None)
 # if TEST_USER env var is set, the user is set to this user email.
 TEST_USER = os.environ.get("TEST_USER", None)
 
+# if FLYEM_SECRET env var is set, this server can issue FlyEM tokens.
+FLYEM_SECRET = os.environ.get("FLYEM_SECRET", None)
+
 # TODO -- should really be in adapters to store
 
 # firestore user collection name

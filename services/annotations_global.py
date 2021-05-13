@@ -139,8 +139,8 @@ def run_query(collection, query, id_field: str, version: str, changes: bool):
                 continue
             id = doc_data[id_field]
             if id in data_per_key and \
-               (doc_data['_version'] < doc_per_key[id]['_version'] or \
-                (doc_data['_version'] == doc_per_key[id]['_version'] and doc_data['_timestamp'] < doc_per_key[id]['_timestamp'])):
+               (doc_data['_version'] < data_per_key[id]['_version'] or \
+                (doc_data['_version'] == data_per_key[id]['_version'] and doc_data['_timestamp'] < data_per_key[id]['_timestamp'])):
                 continue
             data_per_key[id] = doc_data
             doc_per_key[id] = doc

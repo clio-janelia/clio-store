@@ -184,6 +184,19 @@ def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: 
 @google_firestore.transactional
 def update_in_transaction(transaction, head_ref, archived_ref, data: dict, version: str):
     snapshot = head_ref.get(transaction=transaction)
+    if not snapshot.exists:
+        # first record for this body so create new HEAD
+        data['_head'] = True
+        data['_archived_versions'] = []
+        data['_archived_keys'] = []
+        if version == "":
+            data['_version'] = 0
+        else:
+            data['_version'] = version_str_to_int(version)
+        transaction.set(head_ref, data)
+        transaction.delete(archived_ref)  # don't need it
+        return
+
     orig_data = snapshot.to_dict()
     if version == "":
         version_int = orig_data['_version']

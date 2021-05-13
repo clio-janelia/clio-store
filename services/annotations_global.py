@@ -182,17 +182,23 @@ def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: 
     return output
 
 @google_firestore.transactional
-def update_in_transaction(transaction, head_ref, archived_ref, data: dict, version: int):
+def update_in_transaction(transaction, head_ref, archived_ref, data: dict, version: str):
     snapshot = head_ref.get(transaction=transaction)
     orig_data = snapshot.to_dict()
-    if orig_data['_version'] <= version:
+    if version == "":
+        version_int = orig_data['_version']
+    else:
+        version_int = version_str_to_int(version)
+    data["_version"] = version_int
+
+    if orig_data['_version'] <= version_int:
         # new data should be HEAD so archive current snapshot
+        updated = orig_data.copy()
+        updated.update(data)
         orig_data['_head'] = False
         del orig_data['_archived_versions']
         del orig_data['_archived_keys']
         transaction.set(archived_ref, orig_data)
-        updated = orig_data.copy()
-        updated.update(data)
         updated['_archived_versions'].insert(0, orig_data['_version'])
         updated['_archived_keys'].insert(0, archived_ref.id)
         transaction.set(head_ref, updated)
@@ -202,13 +208,13 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, versi
         transaction.set(archived_ref, data)
         inserted = False
         for i, v in enumerate(orig_data['_archived_versions']):
-            if v <= version:
-                orig_data['_archived_versions'].insert(i, version)
+            if v <= version_int:
+                orig_data['_archived_versions'].insert(i, version_int)
                 orig_data['_archived_keys'].insert(i, archived_ref.id)
                 inserted = True
                 break
         if not inserted:
-            orig_data['_archived_versions'].append(version)
+            orig_data['_archived_versions'].append(version_int)
             orig_data['_archived_keys'].append(archived_ref.id)
         transaction.set(head_ref, orig_data)
 
@@ -219,7 +225,6 @@ def write_annotation(collection, data: dict, id_field: str, version: str, user: 
         raise HTTPException(status_code=400, detail=f'the id field "{id_field}" must be included in every annotation: {data}')
     id = data[id_field]
     head_key = f'id{id}'
-    data["_version"] = version_str_to_int(version)
     data["_timestamp"] = time.time()
     data["_user"] = user.email
 
@@ -332,7 +337,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", version: str = "v0.0", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
     """

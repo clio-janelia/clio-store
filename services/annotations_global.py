@@ -8,97 +8,160 @@ from typing import Dict, List, Any, Set, Union, Optional
 from pydantic import BaseModel, ValidationError, validator
 
 from config import *
-from dependencies import get_user, User
+from dependencies import get_user, User, version_str_to_int
 from stores import firestore
-from google.cloud.firestore import Query
+from google.cloud import firestore as google_firestore
 
 router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
 
 def remove_reserved_fields(data: dict):
-    """Remove any reserved fields"""
+    """Returns copy of the dict with any reserved fields removed"""
     del_list = []
     for field in data:
         if field.startswith("_"):
             del_list.append(field)
-    for field in del_list:
-        del data[field]
+    if len(del_list) != 0:
+        output = data.copy()
+        for field in del_list:
+            del output[field]
+        return output
+    return data
 
 def check_reserved_fields(data: List[dict]):
     """Check for reserved fields and raise HTTPException if present"""
     for obj in data:
         for field in obj:
             if field.startswith("_"):
-                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"cannot have fields starting with underscore since those names are reserved")
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f'cannot have fields starting with underscore since those names are reserved')
 
-def get_changes(results, version: str):
+def get_changes(collection, head_doc, from_key: str = ""):
+    """Returns a list of data corresponding to all changes (with restricted fields removed) starting at from_key"""
+    start_pos = None
     output = []
-    for doc in results:
-        data = doc.to_dict()
-        if version is None or version == "" or data["_version"] <= version:
-            remove_reserved_fields(data)
-            output.append(data)
+    head_data = head_doc.to_dict()
+    if from_key == "" or from_key == head_doc.id:
+        start_pos = 0
+        output = [remove_reserved_fields(head_data)]  
+    else:
+        for i, key in enumerate(head_data["_archived_keys"]):
+            if key == from_key:
+                start_pos = i
+                break
+    if start_pos is None:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f'non-existant key given "{from_key}" not in document {head_doc.id} chain')
+    for key in head_data["_archived_keys"][start_pos:]:
+        doc = collection.document(key).get()
+        data = remove_reserved_fields(doc.to_dict())
+        output.append(data)
     return output
 
-def reconcile_query(results, nonid_query: dict, id_field: str, version: str):
-    """Returns list of annotations for given version where annotations for each id
-       have been coalesced per id.
+def get_best_version(collection, doc, id_field: str, version: str):
+    """Returns the best record that fulfills the given version of the doc.
+
+    First we get the HEAD data if the current doc is not the HEAD already.
+    Since the HEAD data has a list of all the versions of the children in 
+    timestamp order, we can return the best version in at most an additional
+    GET and at best no additional GETs because the HEAD data fulfills
+    the version request (e.g., if version is empty so HEAD is requested).
+    Note that there may be multiple data documents for a given version, and
+    this function returns the most recent data for the given version.
+
+    If no version is found (e.g., a version requested precedes any data),
+    then a None key is returned with an empty dict.
     
     Args:
-        results (Query results): list of JSON objects that meet query.
-        nonid_query (dict): field constraints to be checked
-        id_field (str): field that represents id where versioning is handled across it.
+        doc: firestore Document reference.
         version (str): version desired, assumed that later versions are 
             lexicographically larger and None or empty string return most recent
             version.
-        changes (bool): if true, return all changes to the annotations.
+
+    Returns: (best_key, best_data, head_doc)
+        best_key (str): the key of the document that best matches version
+        best_data (dict): the dict of the above key with reserved fields removed
+        head_doc (firestore Document ref): the HEAD document reference
     """
-    # prune by version
-    pruned_results = []
-    for doc in results:
-        data = doc.to_dict()
-        if version is None or version == "" or data["_version"] <= version:
-            if id_field not in data:
-                raise HTTPException(status_code=400, detail=f"id field {id_field} not present in annotation: {data}")
-            if "_timestamp" not in data:
-                raise HTTPException(status_code=400, detail=f"internal timestamp not present in annotation: {data}")
-            pruned_results.append(data)
+    doc_data = doc.to_dict()
+    if doc_data['_head']:
+        head_key = doc.id
+        head_doc = doc
+        head_data = doc_data
+    else:
+        head_key = f'id{doc_data[id_field]}'
+        head_doc = collection.document(head_key).get()
+        head_data = head_doc.to_dict()
 
-    if len(pruned_results) == 0:
-        return []
-    elif len(pruned_results) == 1:
-        remove_reserved_fields(pruned_results[0])
-        return pruned_results
+    if version == "":
+        return (head_key, remove_reserved_fields(head_data), head_doc)
+
+    version_int = version_str_to_int(version)
+    if version_int >= head_data['_version']:
+        return (head_key, remove_reserved_fields(head_data), head_doc)
+
+    child_key = None
+    for i, child_version in enumerate(head_data['_archived_versions']):
+        if version_int >= child_version:
+            child_key = head_data['_archived_keys']
+            break
+
+    if child_key is None:
+        return (child_key, {}, head_doc)
     
-    # sort by timestamp
-    pruned_results.sort(key=lambda x: x["_timestamp"])
+    child_doc = collection.document(child_key).get()
+    if child_doc is None:
+        return (child_key, {}, head_doc)
+    return (child_key, remove_reserved_fields(child_doc.to_dict()), head_doc)
 
-    # determine best annotations per id field
-    best = {}
-    for data in pruned_results:
-        id = data[id_field]
-        if id not in best:
-            best[id] = data
-        elif data["_version"] > best[id]["_version"] or (data["_version"] == best[id]["_version"] and data["_timestamp"] > best[id]["_timestamp"]):
-            best[id].update(data)
-    unmatched_ids = set()
-    for data in best.values():
-        unmatched = False
-        for field in nonid_query:
-            if field in data and data[field] != nonid_query[field]:
-                unmatched = True
-                break
-        if unmatched:
-            unmatched_ids.add(data[id_field])
-        else:
-            remove_reserved_fields(data)
-    for id in unmatched_ids:
-        del best[id]
-    return list(best.values())
 
-def run_query_on_ids(collection, nonid_query: dict, ids: List[int], id_field: str, version: str, changes: bool):
-    """ Run query (without id_field selector) across an arbitrary number of ids. """
+def run_query(collection, query, id_field: str, version: str, changes: bool):
+    """ Run query and get best hits for given version """
+    t0 = time.perf_counter()
+    output = []
+    if version == "":
+        head_results = query.where('_head', '==', True).stream()  # this guarantees we only get 1 hit per id
+        for head_doc in head_results:
+            if changes:
+                output.extend(get_changes(collection, head_doc))
+            else:
+                head_data = remove_reserved_fields(head_doc.to_dict())
+                output.append(head_data)
+    else:
+        query_results = query.stream()
+
+        # filter by id because we may get multiple hits per id, so we want the hit closest to our version request.
+        doc_per_key = {}
+        data_per_key = {}
+        version_int = version_str_to_int(version)
+        for doc in query_results:
+            doc_data = doc.to_dict()
+            if doc_data['_version'] > version_int:
+                continue
+            id = doc_data[id_field]
+            if id in data_per_key and \
+               (doc_data['_version'] < doc_per_key[id]['_version'] or \
+                (doc_data['_version'] == doc_per_key[id]['_version'] and doc_data['_timestamp'] < doc_per_key[id]['_timestamp'])):
+                continue
+            data_per_key[id] = doc_data
+            doc_per_key[id] = doc
+
+        # now for best annotation per id, see if it is indeed the last for the given version
+        for doc in doc_per_key.values():
+            best_key, best_data, head_doc = get_best_version(collection, doc, id_field, version)
+            if best_key is None or best_key != doc.id: # No record satisfies the version
+                continue
+            elif changes:
+                output.extend(get_changes(collection, head_doc, best_key))
+            else:
+                output.append(best_data)
+
+    elapsed = time.perf_counter() - t0
+    print(f"Query matched {len(output)} annotations: {elapsed:0.4f} sec")
+    return output
+
+
+def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: str, changes: bool):
+    """ Run query across an arbitrary number of ids. """
     t0 = time.perf_counter()
     output = []
     for start in range(0, len(ids), 10):
@@ -109,41 +172,62 @@ def run_query_on_ids(collection, nonid_query: dict, ids: List[int], id_field: st
         else:
             value = ids[start:start+remain]
             op = 'in'
-        results = collection.where(id_field, op, value).get()
-        if changes:
-            data = get_changes(results, version)
-        else:
-            data = reconcile_query(results, nonid_query, id_field, version)
-        if len(data) != 0:
-            output.extend(data)
+        partial_query = query.where(id_field, op, value)
+        datalist = run_query(collection, partial_query, id_field, version, changes)
+        if len(datalist) != 0:
+            output.extend(datalist)
 
     elapsed = time.perf_counter() - t0
     print(f"Ran query on {len(ids)} ids and found {len(output)} annotations that matched: {elapsed:0.4f} sec")
     return output
 
-def get_ids_fulfilling_query(nonid_query, id_field: str, version: str):
-    """ Run query (without id_field selector) and get all ids that meet criteria. """
-    t0 = time.perf_counter()
-    results = nonid_query.get()
-    ids = set()
-    for doc in results:
-        data = doc.to_dict()
-        if version is None or version == "" or data["_version"] <= version:
-            if id_field not in data:
-                raise HTTPException(status_code=400, detail=f"id field {id_field} not present in annotation: {data}")
-            if "_timestamp" not in data:
-                raise HTTPException(status_code=400, detail=f"internal timestamp not present in annotation: {data}")
-            ids.add(data[id_field])
-    elapsed = time.perf_counter() - t0
-    print(f"Got {len(ids)} ids that fulfill non-id query: {elapsed:0.4f} sec")
-    return list(ids)
+@google_firestore.transactional
+def update_in_transaction(transaction, head_ref, archived_ref, data: dict, version: int):
+    snapshot = head_ref.get(transaction=transaction)
+    orig_data = snapshot.to_dict()
+    if orig_data['_version'] <= version:
+        # new data should be HEAD so archive current snapshot
+        orig_data['_head'] = False
+        del orig_data['_archived_versions']
+        del orig_data['_archived_keys']
+        transaction.set(archived_ref, orig_data)
+        updated = orig_data.copy()
+        updated.update(data)
+        updated['_archived_versions'].insert(0, orig_data['_version'])
+        updated['_archived_keys'].insert(0, archived_ref.id)
+        transaction.set(head_ref, updated)
+    else:
+        # new data is old so it is archived and insert into appropriate position in HEAD tracker
+        data['_head'] = False
+        transaction.set(archived_ref, data)
+        inserted = False
+        for i, v in enumerate(orig_data['_archived_versions']):
+            if v <= version:
+                orig_data['_archived_versions'].insert(i, version)
+                orig_data['_archived_keys'].insert(i, archived_ref.id)
+                inserted = True
+                break
+        if not inserted:
+            orig_data['_archived_versions'].append(version)
+            orig_data['_archived_keys'].append(archived_ref.id)
+        transaction.set(head_ref, orig_data)
 
-def write_annotation(version, collection, data, user: User):
-    data["_version"] = version
+
+def write_annotation(collection, data: dict, id_field: str, version: str, user: User):
+    """ Write annotation transactionally, modifying HEAD and archiving old annotation """
+    if not id_field in data:
+        raise HTTPException(status_code=400, detail=f'the id field "{id_field}" must be included in every annotation: {data}')
+    id = data[id_field]
+    head_key = f'id{id}'
+    data["_version"] = version_str_to_int(version)
     data["_timestamp"] = time.time()
     data["_user"] = user.email
+
     try:
-        collection.add(data)
+        transaction = firestore.db.transaction()
+        head_ref = collection.document(head_key)
+        archived_ref = collection.document()
+        update_in_transaction(transaction, head_ref, archived_ref, data, version)
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
@@ -176,7 +260,7 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
     
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        return run_query_on_ids(collection, {}, ids, id_field, version, changes)
+        return run_query_on_ids(collection, collection, ids, id_field, version, changes)
 
     except Exception as e:
         print(e)
@@ -234,11 +318,9 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
                 nonid_query = nonid_query.where(key, op, query[key])
 
         if len(ids) == 0:
-            # Run query to get the ids that meet the query
-            ids = get_ids_fulfilling_query(nonid_query, id_field, version)
+            return run_query(collection, nonid_query, id_field, version, changes)
         
-        # Get all of each body id's annotations and manually test against query
-        return run_query_on_ids(collection, query, ids, id_field, version, changes)
+        return run_query_on_ids(collection, nonid_query, ids, id_field, version, changes)
 
 
     except Exception as e:
@@ -250,7 +332,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], version: str = "v0.0", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", version: str = "v0.0", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
     """
@@ -265,7 +347,7 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
     check_reserved_fields(payload)
     num = 0
     for annotation in payload:
-        write_annotation(version, collection, annotation, user)
+        write_annotation(collection, annotation, id_field, version, user)
         num += 1
         if num % 100 == 0:
             print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")

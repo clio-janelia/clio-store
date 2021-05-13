@@ -39,6 +39,29 @@ async def add_CORS_header(request: Request, call_next):
     response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'
     return response
    
+def version_str_to_int(version_str: str) -> int:
+    """Returns a version integer given a semantic versioning string."""
+    parts = version_str.split('.')
+    if len(parts) > 3:
+        raise HTTPException(status_code=400, detail=f'version tag "{version_str}" should only have 3 parts (major, minor, patch numbers)')
+    elif len(parts) == 0:
+        raise HTTPException(status_code=400, detail=f'version tag "{version_str}" should have at least major number')
+    major = 0
+    minor = 0
+    patch = 0
+    try:
+        if parts[0][0] == 'v':
+            major = int(parts[0][1:])
+        else:
+            major = int(parts[0])
+        if len(parts) > 1:
+            minor = int(parts[1])
+        if len(parts) > 2:
+            patch = int(parts[2])
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'unable to parse version tag "{version_str}": {e}')
+    
+    return major * 1000 * 1000 + minor * 1000 + patch
 
 
 # reloads User and Dataset info from DB after this many seconds

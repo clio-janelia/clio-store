@@ -28,7 +28,7 @@ pycparser==2.20
 pydantic==1.7.2
 pytz==2020.4
 requests==2.25.0
-rsa==4.6
+rsa>=4.7
 six==1.15.0
 starlette==0.13.6
 typing-extensions==3.7.4.3

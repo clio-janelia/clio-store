@@ -249,6 +249,33 @@ def write_annotation(collection, data: dict, id_field: str, version: str, user: 
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
+
+@router.get('/{dataset}/{annotation_type}/all', response_model=List)
+@router.get('/{dataset}/{annotation_type}/all/', response_model=List, include_in_schema=False)
+def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+    """ Returns all current neuron annotation in the database.
+        
+    Returns:
+
+        A JSON list of the annotations.
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    output = []
+    try:
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+        results = collection.where('_head', '==', True).stream()
+        for head_doc in results:
+            annotation = remove_reserved_fields(head_doc.to_dict())
+            output.append(annotation)
+
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
+    
+    return output
+
     
 @router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])
 @router.get('/{dataset}/{annotation_type}/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)

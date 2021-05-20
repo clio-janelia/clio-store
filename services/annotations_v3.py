@@ -21,7 +21,7 @@ class Kind(str, Enum):
 class Annotation(BaseModel):
     kind: Kind
     pos: List[int]
-    prop: Dict[str, Any]
+    prop: Optional[Dict[str, Any]]
     tags: Optional[List[str]]
     user: Optional[str]
     title: Optional[str]

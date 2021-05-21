@@ -77,6 +77,8 @@ class Dataset(BaseModel):
     neuroglancer: Optional[dict]
     versions: Optional[list]
 
+    bodyAnnotationSchema: Optional[dict]
+
     # legacy -- will be removed after UI accomodates new schema
     public: Optional[bool] = False
     layers: Optional[List[dict]] = []  # segmentation refs

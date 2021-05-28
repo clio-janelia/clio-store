@@ -100,12 +100,11 @@ async def proxy_volume(volume: str, obj_path: str) -> Response:
     async with httpx.AsyncClient() as client:
         bucket = quote(cache[volume].bucket, safe='')
         obj = quote(cache[volume].path+'/'+obj_path, safe='')
-        proxy_url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{obj}"
+        proxy_url = f"https://storage.googleapis.com/storage/v1/b/{bucket}/o/{obj}?alt=media"
         proxy = await client.get(proxy_url)
     response = Response()
     response.body = proxy.content
     response.status_code = proxy.status_code
-    response.headers['Content-Length'] = proxy.headers['Content-Length']
     response.headers['Content-Type'] = proxy.headers['Content-Type']
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'

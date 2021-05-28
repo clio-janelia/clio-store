@@ -39,3 +39,6 @@ CLIO_PULL_REQUESTS = "clio_pull_requests"
 
 # firestore subvolume edit collection
 CLIO_SUBVOL = "clio_subvol"
+
+# firestore volume proxy
+CLIO_VOLUMES = "clio_volumes"

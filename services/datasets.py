@@ -52,7 +52,7 @@ def get_datasets(current_user: User = Depends(get_user)):
 
 @router.get('{dataset}')
 @router.get('/{dataset}', include_in_schema=False)
-def get_datasets(dataset: str, current_user: User = Depends(get_user)):
+def get_dataset(dataset: str, current_user: User = Depends(get_user)):
     try:
         if public_dataset(dataset) or current_user.can_read(dataset):
             doc_ref = firestore.get_collection(CLIO_DATASETS).document(dataset).get()

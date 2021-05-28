@@ -5,7 +5,7 @@ from config import URL_PREFIX
 from dependencies import get_user, app
 from services import annotations_v3, annotations_v2, atlas, datasets, image_query, image_transfer, \
     kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request, server, \
-    annotations_global    
+    annotations_global, volumes    
 
 # Wire in the API endpoints
 # require user authorization for any of the actual data API calls
@@ -36,6 +36,7 @@ app.include_router(roles.router, prefix=f"{URL_PREFIX}/v2/roles", dependencies=[
 #app.include_router(subvol_edit.router, prefix=f"{URL_PREFIX}/v2/subvol", dependencies=[Depends(get_user)])
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v2/pull-request", dependencies=[Depends(get_user)])
 app.include_router(server.router, prefix=f"{URL_PREFIX}/v2/server", dependencies=[Depends(get_user)])
+app.include_router(volumes.router, prefix=f"{URL_PREFIX}/v2/volumes", dependencies=[Depends(get_user)])
 
 # allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)

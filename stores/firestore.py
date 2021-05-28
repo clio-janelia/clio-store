@@ -3,7 +3,7 @@ from pydantic.typing import List, Union
 
 db = firestore.Client()
 
-def get_collection(path: List[str]):
+def get_collection(path: Union[str, List[str]]):
     """Return a firestore collection given a path of collection/document/collection...
 
     Args:
@@ -12,6 +12,10 @@ def get_collection(path: List[str]):
     """
     if path is None:
         raise ValueError('path must exist')
+
+    if isinstance(path, str):
+        return db.collection(path)
+
     if len(path) % 2 == 0:
         raise ValueError('path must end in a collection')
     ref = db

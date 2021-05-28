@@ -105,6 +105,8 @@ async def proxy_volume(volume: str, obj_path: str) -> Response:
     response = Response()
     response.body = proxy.content
     response.status_code = proxy.status_code
+    response.headers['Content-Length'] = proxy.headers['Content-Length']
+    response.headers['Content-Type'] = proxy.headers['Content-Type']
     response.headers['Access-Control-Allow-Origin'] = '*'
     response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
     response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type'

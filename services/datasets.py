@@ -50,8 +50,8 @@ def get_datasets(current_user: User = Depends(get_user)):
         print(e)
         raise HTTPException(status_code=400, detail="error in retrieving datasets' metadata")
 
-@router.get('{dataset}')
-@router.get('/{dataset}', include_in_schema=False)
+@router.get('/{dataset}')
+@router.get('/{dataset}/', include_in_schema=False)
 def get_dataset(dataset: str, current_user: User = Depends(get_user)):
     try:
         if public_dataset(dataset) or current_user.can_read(dataset):

@@ -90,7 +90,7 @@ def get_volume(volume: str, current_user: User = Depends(get_user)):
 
 @router.get('proxy/{volume}/{obj_path:path}')
 @router.get('/proxy/{volume}/{obj_path:path}', include_in_schema=False)
-async def proxy_volume(volume: str, obj_path: str, current_user: User = Depends(get_user)) -> Response:
+async def proxy_volume(volume: str, obj_path: str) -> Response:
     # if not (public_dataset(volume) or current_user.can_read(volume)):
     #     raise HTTPException(status_code=401, detail=f"no permission to do proxy requests to dataset {volume}")
     if volume not in cache:

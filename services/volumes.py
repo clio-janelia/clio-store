@@ -88,7 +88,7 @@ def get_volume(volume: str, current_user: User = Depends(get_user)):
         print(e)
         raise HTTPException(status_code=400, detail="error in retrieving volumes' metadata")
 
-@router.get('/proxy/{volume}/{obj_path:path}')
+@router.get('/proxy/{volume}/{obj_path:path}', include_in_schema=False)
 @router.get('/proxy/{volume}/{obj_path:path}/', include_in_schema=False)
 async def proxy_volume(volume: str, obj_path: str) -> Response:
     # if not (public_dataset(volume) or current_user.can_read(volume)):

@@ -56,7 +56,7 @@ class AnnotationOut(BaseModel):
     key: str
     kind: Kind
     pos: List[int]
-    prop: Dict[str, Any]
+    prop: Optional[Dict[str, Any]]
     tags: Optional[List[str]]
     title: Optional[str]
     description: Optional[str]

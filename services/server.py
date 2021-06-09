@@ -13,6 +13,7 @@ import jwt
 router = APIRouter()
 
 _SECS_IN_WEEK = 60 * 60 * 24 * 7
+_TOKEN_DURATION = 3 * _SECS_IN_WEEK
 
 @router.post('/refresh-caches')
 @router.post('/refresh-caches/', include_in_schema=False)
@@ -29,7 +30,7 @@ async def get_token(user: User = Depends(get_user)):
     if FLYEM_SECRET is None:
         raise HTTPException(status_code=400, detail=f"Can't generate FlyEM token because FLYEM_SECRET not specified for this server")
     cur_time = int(time.time())
-    exp_time = cur_time + _SECS_IN_WEEK
+    exp_time = cur_time + _TOKEN_DURATION
     flyem_jwt = {
         'email': user.email,
         'iat': cur_time,

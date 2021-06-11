@@ -64,26 +64,35 @@ class AnnotationOut(BaseModel):
 
 @router.get('/{dataset}', response_model=List[AnnotationOut])
 @router.get('/{dataset}/', response_model=List[AnnotationOut], include_in_schema=False)
-def get_annotations(dataset: str, groups: str = "", user: User = Depends(get_user)):
-    """ Returns all annotations for the user defined by the accompanying Authorization token.
+def get_annotations(dataset: str, groups: str = "", user: str = "", requestor: User = Depends(get_user)):
+    """ Returns all annotations for the user defined by the accompanying Authorization token
+        or the query string user if the requestor has admin permissions.
         Return format is JSON list with annotations and generated fields "user" and "key",
         where "key" is a user-scoped key used in DELETE requests for annotations.
 
         Optional query string "groups" (names separated by commas) can result in larger set 
         of annotations returned, corresponding to all annotations for the given groups.
-        The groups can only be ones in which the user is a member.
+        The groups can only be ones in which the user is a member unless user has admin permissions.
     """
-    if not user.can_read(dataset):
+    if not requestor.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+    if user == "":
+        user = requestor.email
+    elif user != requestor.email and not requestor.is_admin():
+        raise HTTPException(status_code=401, detail=f"get of user {user} requires admin permissions")
+
     output = []
-    members = set([user.email])
+    members = set([user])
     if groups != "":
         groups_queried = set(groups.split(','))
         if len(groups_queried) > 0:
-            groups_added = groups_queried.intersection(user.groups)
+            if requestor.is_admin():
+                groups_added = groups_queried
+            else:
+                groups_added = groups_queried.intersection(requestor.groups)
             if len(groups_added) == 0:
-                raise HTTPException(status_code=400, detail=f"user {user.email} is not member of requested groups {groups_queried}")
-            members.update(group_members(user, groups_added))
+                raise HTTPException(status_code=400, detail=f"requestor {requestor.email} is not member of requested groups {groups_queried}")
+            members.update(group_members(requestor, groups_added))
     try:
         for member in members:
             collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, member])

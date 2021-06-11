@@ -245,8 +245,9 @@ class UserCache(BaseModel):
         return user
 
     def group_members(self, user: User, groups: Set[str]) -> Set[str]:
-        """Returns set of emails for groups given user belongs"""
-        groups.intersection_update(user.groups)
+        """Returns set of emails for groups given user belongs unless user is admin"""
+        if not user.is_admin():
+            groups.intersection_update(user.groups)
         if len(groups) == 0:
             return set()
         age = time.time() - self.memberships_updated

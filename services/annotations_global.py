@@ -114,14 +114,18 @@ def get_best_version(collection, doc, id_field: str, version: str):
     return (child_key, remove_reserved_fields(child_doc.to_dict()), head_doc)
 
 
-def run_query(collection, query, id_field: str, version: str, changes: bool):
+def run_query(collection, query, id_field: str, version: str, changes: bool, onlyid: bool = False):
     """ Run query and get best hits for given version """
     t0 = time.perf_counter()
     output = []
     if version == "":
         head_results = query.where('_head', '==', True).stream()  # this guarantees we only get 1 hit per id
         for head_doc in head_results:
-            if changes:
+            if onlyid:
+                doc_dict = head_doc.to_dict()
+                if id_field in doc_dict:
+                    output.append(doc_dict[id_field])
+            elif changes:
                 output.extend(get_changes(collection, head_doc))
             else:
                 head_data = remove_reserved_fields(head_doc.to_dict())
@@ -150,6 +154,9 @@ def run_query(collection, query, id_field: str, version: str, changes: bool):
             best_key, best_data, head_doc = get_best_version(collection, doc, id_field, version)
             if best_key is None or best_key != doc.id: # No record satisfies the version
                 continue
+            elif onlyid:
+                if id_field in best_data:
+                    output.append(best_data[id_field])
             elif changes:
                 output.extend(get_changes(collection, head_doc, best_key))
             else:
@@ -160,7 +167,7 @@ def run_query(collection, query, id_field: str, version: str, changes: bool):
     return output
 
 
-def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: str, changes: bool):
+def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: str, changes: bool, onlyid: bool = False):
     """ Run query across an arbitrary number of ids. """
     t0 = time.perf_counter()
     output = []
@@ -173,7 +180,7 @@ def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: 
             value = ids[start:start+remain]
             op = 'in'
         partial_query = query.where(id_field, op, value)
-        datalist = run_query(collection, partial_query, id_field, version, changes)
+        datalist = run_query(collection, partial_query, id_field, version, changes, onlyid)
         if len(datalist) != 0:
             output.extend(datalist)
 
@@ -316,9 +323,10 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
-@router.post('/{dataset}/{annotation_type}/query', response_model=List[dict])
-@router.post('/{dataset}/{annotation_type}/query/', response_model=List[dict], include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, query: dict, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+@router.post('/{dataset}/{annotation_type}/query', response_model=List)
+@router.post('/{dataset}/{annotation_type}/query/', response_model=List, include_in_schema=False)
+def get_annotations(dataset: str, annotation_type: str, query: dict, version: str = "", changes: bool = False, \
+                    id_field: str = "bodyid", onlyid: bool = False, user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
     The JSON query format uses field names as the keys, and desired values.
@@ -334,7 +342,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 
         id_field (str): The id field name (default: "bodyid") that should be integers.
 
-        conditional (str or List[str]): The field names that should not be saved if they already are set.
+        onlyid (bool): If true (false by default), will only return a list of id field values that match.
 
     Returns:
 
@@ -370,9 +378,9 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
                 nonid_query = nonid_query.where(key, op, query[key])
 
         if len(ids) == 0:
-            return run_query(collection, nonid_query, id_field, version, changes)
+            return run_query(collection, nonid_query, id_field, version, changes, onlyid)
         
-        return run_query_on_ids(collection, nonid_query, ids, id_field, version, changes)
+        return run_query_on_ids(collection, nonid_query, ids, id_field, version, changes, onlyid)
 
 
     except Exception as e:
@@ -392,8 +400,10 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
         Query strings:
 
         id_field (str): The field name that corresponds to the id, e.g., "bodyid"
+
         conditional (str or List[str]): A field name or list of names that should only be written
             if the field is currently non-existant or empty.
+
         version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
     """
     try:

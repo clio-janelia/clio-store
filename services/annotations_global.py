@@ -393,7 +393,7 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
 def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", \
-                     conditional = [], version: str = "", user: User = Depends(get_user)):
+                     conditional: str = "", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
 
@@ -401,7 +401,7 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
 
         id_field (str): The field name that corresponds to the id, e.g., "bodyid"
 
-        conditional (str or List[str]): A field name or list of names that should only be written
+        conditional (str): A field name or list of names separated by commas that should only be written
             if the field is currently non-existant or empty.
 
         version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
@@ -416,12 +416,11 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
         payload = [payload]
     check_reserved_fields(payload)
     num = 0
-    if bool(conditional) and isinstance(conditional, str):
-        conditional = [conditional]
-    if not isinstance(conditional, List):
-        raise HTTPException(status_code=400, detail=f"bad format for conditional query string: expect str or list of str")
+    conditional_fields = []
+    if bool(conditional):
+        conditional_fields = conditional.split(',')
     for annotation in payload:
-        write_annotation(collection, annotation, id_field, conditional, version, user)
+        write_annotation(collection, annotation, id_field, conditional_fields, version, user)
         num += 1
         if num % 100 == 0:
             print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")

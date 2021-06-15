@@ -182,7 +182,7 @@ def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: 
     return output
 
 @google_firestore.transactional
-def update_in_transaction(transaction, head_ref, archived_ref, data: dict, version: str):
+def update_in_transaction(transaction, head_ref, archived_ref, data: dict, conditional_fields: List[str], version: str):
     snapshot = head_ref.get(transaction=transaction)
     if not snapshot.exists:
         # first record for this body so create new HEAD
@@ -203,6 +203,11 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, versi
     else:
         version_int = version_str_to_int(version)
     data["_version"] = version_int
+
+    # if there are conditional fields that already exist, delete them.
+    for field in conditional_fields:
+        if field in orig_data and bool(orig_data[field]):
+            del data[field]
 
     if orig_data['_version'] <= version_int:
         # new data should be HEAD so archive current snapshot
@@ -232,7 +237,7 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, versi
         transaction.set(head_ref, orig_data)
 
 
-def write_annotation(collection, data: dict, id_field: str, version: str, user: User):
+def write_annotation(collection, data: dict, id_field: str, conditional: List[str], version: str, user: User):
     """ Write annotation transactionally, modifying HEAD and archiving old annotation """
     if not id_field in data:
         raise HTTPException(status_code=400, detail=f'the id field "{id_field}" must be included in every annotation: {data}')
@@ -245,7 +250,7 @@ def write_annotation(collection, data: dict, id_field: str, version: str, user: 
         transaction = firestore.db.transaction()
         head_ref = collection.document(head_key)
         archived_ref = collection.document()
-        update_in_transaction(transaction, head_ref, archived_ref, data, version)
+        update_in_transaction(transaction, head_ref, archived_ref, data, conditional, version)
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
@@ -329,6 +334,8 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 
         id_field (str): The id field name (default: "bodyid") that should be integers.
 
+        conditional (str or List[str]): The field names that should not be saved if they already are set.
+
     Returns:
 
         A JSON list of objects.
@@ -372,14 +379,22 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
-
+#conditional: Union[List[str], str] = []
 @router.put('/{dataset}/{annotation_type}')
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", version: str = "", user: User = Depends(get_user)):
+def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", \
+                     conditional = [], version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
+
+        Query strings:
+
+        id_field (str): The field name that corresponds to the id, e.g., "bodyid"
+        conditional (str or List[str]): A field name or list of names that should only be written
+            if the field is currently non-existant or empty.
+        version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
     """
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
@@ -391,8 +406,12 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
         payload = [payload]
     check_reserved_fields(payload)
     num = 0
+    if bool(conditional) and isinstance(conditional, str):
+        conditional = [conditional]
+    if not isinstance(conditional, List):
+        raise HTTPException(status_code=400, detail=f"bad format for conditional query string: expect str or list of str")
     for annotation in payload:
-        write_annotation(collection, annotation, id_field, version, user)
+        write_annotation(collection, annotation, id_field, conditional, version, user)
         num += 1
         if num % 100 == 0:
             print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")

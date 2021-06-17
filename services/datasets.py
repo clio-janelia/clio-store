@@ -36,7 +36,13 @@ def delete_datasets(to_delete: List[str], current_user: User = Depends(get_user)
         raise HTTPException(status_code=400, detail=f"error in deleting datasets {to_delete}")
 
 def replace_element(data, tag, uuid):
-    if isinstance(data, List):
+    if isinstance(data, str):
+        if tag and '{tag}' in data:
+            data = data.replace('{tag}', tag)
+        if uuid and '{uuid}' in data:
+            data = data.replace('{uuid}', uuid)
+        return data
+    elif isinstance(data, list):
         for i, v in enumerate(data):
             data[i] = replace_element(v, tag, uuid)
     elif isinstance(data, dict):

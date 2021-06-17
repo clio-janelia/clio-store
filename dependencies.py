@@ -81,6 +81,7 @@ class Dataset(BaseModel):
     versions: Optional[list]
 
     bodyAnnotationSchema: Optional[dict]
+    orderedLayers: Optional[list]
 
     # legacy -- will be removed after UI accomodates new schema
     public: Optional[bool] = False

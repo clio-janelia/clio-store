@@ -73,6 +73,9 @@ class Dataset(BaseModel):
     title: Optional[str]
     description: str
 
+    tag: Optional[str]
+    uuid: Optional[str]
+
     mainLayer: Optional[str]
     neuroglancer: Optional[dict]
     versions: Optional[list]
@@ -82,7 +85,6 @@ class Dataset(BaseModel):
     # legacy -- will be removed after UI accomodates new schema
     public: Optional[bool] = False
     layers: Optional[List[dict]] = []  # segmentation refs
-    tag: Optional[str]
     dimensions: Optional[dict]
     position: Optional[List[float]]
     crossSectionScale: Optional[float]

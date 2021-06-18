@@ -1,7 +1,7 @@
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
-from dependencies import public_dataset, get_user, User, Dataset
+from dependencies import public_dataset, get_user, User, Dataset, get_dataset as get_cached_dataset
 from typing import Dict, List
 
 from stores import firestore
@@ -16,6 +16,9 @@ def post_datasets(datasets: Dict[str, Dataset], current_user: User = Depends(get
     try:
         collection = firestore.get_collection(CLIO_DATASETS)
         for dataset_id, dataset in datasets.items():
+            cached_dataset = get_cached_dataset(dataset_id)
+            if cached_dataset and cached_dataset.tag and cached_dataset.tag > dataset.tag:
+                raise Exception(f'posted dataset {dataset_id} has tag {dataset.tag} earlier than current {cached_dataset.tag}')
             collection.document(dataset_id).set(dataset.dict(exclude_unset=True))
     except Exception as e:
         print(e)

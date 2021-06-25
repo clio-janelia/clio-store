@@ -15,7 +15,7 @@ Setup Local Python Environment:
 ```
 git clone https://github.com/pyenv/pyenv.git .pyenv
 export PYENV_ROOT=.pyenv
-.pyenv/bin/pyenv install
+.pyenv/bin/pyenv install 3.9.5
 eval "$(.pyenv/bin/pyenv init -)"
 python -m venv venv
 source venv/bin/activate

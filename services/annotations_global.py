@@ -289,6 +289,107 @@ def get_fields(dataset: str, annotation_type: str, user: User = Depends(get_user
         raise HTTPException(status_code=404, detail=f"Could not find any fields for annotation type {annotation_type} in dataset {dataset}")
     return fields
 
+@router.get('/{dataset}/{annotation_type}/versions', response_model=dict)
+@router.get('/{dataset}/{annotation_type}/versions/', response_model=dict, include_in_schema=False)
+def get_versions(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+    """ Returns the versions for the given scope.
+        
+    Returns:
+
+        A dict with tag keys and corresponding dvid UUIDs as value.
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    tag_to_uuid = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'tag_to_uuid'])
+    if not tag_to_uuid:
+        raise HTTPException(status_code=404, detail=f"Could not find any tag_to_uuid for annotation type {annotation_type} in dataset {dataset}")
+    return tag_to_uuid
+
+@router.get('/{dataset}/{annotation_type}/head_tag', response_model=str)
+@router.get('/{dataset}/{annotation_type}/head_tag/', response_model=str, include_in_schema=False)
+def get_head_tag(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+    """ Returns the head version tag for the given scope.
+        
+    Returns:
+
+        A string of the HEAD version tag, e.g., "v0.3.33"
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    head_tag = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'head_tag'])
+    if not head_tag:
+        raise HTTPException(status_code=404, detail=f"Could not find any head_tag for annotation type {annotation_type} in dataset {dataset}")
+    return head_tag
+
+@router.get('/{dataset}/{annotation_type}/head_uuid', response_model=str)
+@router.get('/{dataset}/{annotation_type}/head_uuid/', response_model=str, include_in_schema=False)
+def get_head_uuid(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+    """ Returns the head version uuid for the given scope.
+        
+    Returns:
+
+        A string of the HEAD version uuid, e.g., "74ea83"
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    head_uuid = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'head_uuid'])
+    if not head_uuid:
+        raise HTTPException(status_code=404, detail=f"Could not find any head_uuid for annotation type {annotation_type} in dataset {dataset}")
+    return head_uuid
+
+@router.get('/{dataset}/{annotation_type}/tag_to_uuid/{tag}', response_model=str)
+@router.get('/{dataset}/{annotation_type}/tag_to_uuid/{tag}/', response_model=str, include_in_schema=False)
+def get_tag_to_uuid(dataset: str, annotation_type: str, tag: str, user: User = Depends(get_user)):
+    """ Returns the corresponding dvid UUID of the given tag for the given scope.
+        
+    Returns:
+
+        A string of the uuid corresponding to the tag, e.g., "74ea83"
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    tag_to_uuid = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'tag_to_uuid'])
+    if not tag_to_uuid:
+        raise HTTPException(status_code=404, detail=f"Could not find any tag_to_uuid for annotation type {annotation_type} in dataset {dataset}")
+    if tag not in tag_to_uuid:
+        raise HTTPException(status_code=404, detail=f"Could not find tag {tag} for annotation type {annotation_type} in dataset {dataset}")
+    return tag_to_uuid[tag]
+
+@router.get('/{dataset}/{annotation_type}/uuid_to_tag/{uuid}', response_model=str)
+@router.get('/{dataset}/{annotation_type}/uuid_to_tag/{uuid}/', response_model=str, include_in_schema=False)
+def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = Depends(get_user)):
+    """ Returns the corresponding string tag for the given dvid UUID for the given scope.
+        
+    Returns:
+
+        A string of the tag corresponding to the uuid, e.g., "v0.3.32"
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    uuid_to_tag = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'uuid_to_tag'])
+    if not uuid_to_tag:
+        raise HTTPException(status_code=404, detail=f"Could not find any uuid_to_tag for annotation type {annotation_type} in dataset {dataset}")
+    found_tag = None
+    num_found = 0
+    for stored_uuid in uuid_to_tag:
+        if len(stored_uuid) < len(uuid) and uuid.startswith(stored_uuid):
+            num_found += 1
+            found_tag = uuid_to_tag[stored_uuid]
+        if len(stored_uuid) >= len(uuid) and stored_uuid.startswith(uuid):
+            num_found += 1
+            found_tag = uuid_to_tag[stored_uuid]
+    if num_found > 1:
+        raise HTTPException(status_code=400, detail=f"uuid {uuid} is ambiguous because more than one hit for annotation type {annotation_type} in dataset {dataset}")
+    if not found_tag:
+        raise HTTPException(status_code=404, detail=f"Could not find uuid {uuid} for annotation type {annotation_type} in dataset {dataset}")
+    return found_tag
+
+
 @router.get('/{dataset}/{annotation_type}/all', response_model=List)
 @router.get('/{dataset}/{annotation_type}/all/', response_model=List, include_in_schema=False)
 def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends(get_user)):

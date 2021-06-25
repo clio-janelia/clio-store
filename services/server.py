@@ -6,7 +6,7 @@ from typing import Set
 
 from config import *
 from dependencies import get_user, users, datasets, User
-from stores import firestore
+from stores import cache
 
 import jwt
 
@@ -21,6 +21,7 @@ async def refresh_caches(user: User = Depends(get_user)):
     """ Refresh caches rather than wait for timer. """
     datasets.refresh_cache()
     users.refresh_cache()
+    cache.refresh_all()
 
 
 @router.post('/token')

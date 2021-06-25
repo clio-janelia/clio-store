@@ -9,7 +9,7 @@ from pydantic import BaseModel, ValidationError, validator
 
 from config import *
 from dependencies import get_user, User, version_str_to_int
-from stores import firestore
+from stores import firestore, cache
 from google.cloud import firestore as google_firestore
 
 router = APIRouter()
@@ -253,6 +253,16 @@ def write_annotation(collection, data: dict, id_field: str, conditional: List[st
     data["_timestamp"] = time.time()
     data["_user"] = user.email
 
+    new_fields = False
+    fields = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'fields'])
+    for cur_field in data:
+        if not cur_field.startswith('_'):
+            if cur_field not in fields:
+                fields.append(cur_field)
+                new_fields = True
+    if new_fields:
+        cache.set_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', value=fields, path=['neurons', 'VNC', 'fields'])
+
     try:
         transaction = firestore.db.transaction()
         head_ref = collection.document(head_key)
@@ -261,6 +271,23 @@ def write_annotation(collection, data: dict, id_field: str, conditional: List[st
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
+
+@router.get('/{dataset}/{annotation_type}/fields', response_model=List)
+@router.get('/{dataset}/{annotation_type}/fields/', response_model=List, include_in_schema=False)
+def get_fields(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+    """ Returns all fields within annotations for the given scope.
+        
+    Returns:
+
+        A JSON list of the fields present in at least one annotation.
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    fields = cache.get_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', path=['neurons', 'VNC', 'fields'])
+    if not fields:
+        raise HTTPException(status_code=404, detail=f"Could not find any fields for annotation type {annotation_type} in dataset {dataset}")
+    return fields
 
 @router.get('/{dataset}/{annotation_type}/all', response_model=List)
 @router.get('/{dataset}/{annotation_type}/all/', response_model=List, include_in_schema=False)

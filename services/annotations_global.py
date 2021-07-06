@@ -8,7 +8,7 @@ from typing import Dict, List, Any, Set, Union, Optional
 from pydantic import BaseModel, ValidationError, validator
 
 from config import *
-from dependencies import get_user, User, version_str_to_int
+from dependencies import get_dataset, get_user, User, version_str_to_int
 from stores import firestore, cache
 from google.cloud import firestore as google_firestore
 
@@ -436,6 +436,10 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+    if version != "":
+        cur_dataset = get_dataset(dataset)
+        if cur_dataset.tag == version:
+            version = ""
 
     if "," in id:
         id_strs = id.split(",")
@@ -478,9 +482,14 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+    if version != "":
+        cur_dataset = get_dataset(dataset)
+        if cur_dataset.tag == version:
+            version = ""
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+
         nonid_query = collection
         ids = []
         for key in query:

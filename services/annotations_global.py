@@ -16,6 +16,8 @@ router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
 
+set_fields = set(['tags'])
+
 def remove_reserved_fields(data: dict):
     """Returns copy of the dict with any reserved fields removed"""
     del_list = []
@@ -502,7 +504,9 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
                     raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"id field must be int or list of ints, got: {query[key]}")
                 continue
             else:
-                if isinstance(query[key], list):
+                if key in set_fields:
+                    op = "array_contains"
+                elif isinstance(query[key], list):
                     if len(query[key]) > 10:
                         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
                     if len(query[key]) == 1:  # counters apparent issue with using 'in'. TODO: determine underlying issue.

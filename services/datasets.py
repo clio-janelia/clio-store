@@ -94,14 +94,17 @@ def replace_templates(data):
 
 @router.get('')
 @router.get('/', include_in_schema=False)
-def get_datasets(current_user: User = Depends(get_user)):
+def get_datasets(templates: bool = False, current_user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection(CLIO_DATASETS)
         datasets_out = {}
         for dataset in collection.stream():
             dataset_info = dataset.to_dict()
             if public_dataset(dataset.id) or current_user.can_read(dataset.id):
-                datasets_out[dataset.id] = replace_templates(dataset_info)
+                if templates:
+                    datasets_out[dataset.id] = dataset_info
+                else:
+                    datasets_out[dataset.id] = replace_templates(dataset_info)
         return datasets_out
     except Exception as e:
         print(e)
@@ -109,11 +112,15 @@ def get_datasets(current_user: User = Depends(get_user)):
 
 @router.get('/{dataset}')
 @router.get('/{dataset}/', include_in_schema=False)
-def get_dataset(dataset: str, current_user: User = Depends(get_user)):
+def get_dataset(dataset: str, templates: bool = False, current_user: User = Depends(get_user)):
     try:
         if public_dataset(dataset) or current_user.can_read(dataset):
             doc_ref = firestore.get_collection(CLIO_DATASETS).document(dataset).get()
-            if doc_ref.exists:
+            if not doc_ref.exists:
+                raise Exception(f'could not find dataset {dataset}')
+            if templates:
+                return doc_ref.to_dict()
+            else:
                 return replace_templates(doc_ref.to_dict())
     except Exception as e:
         print(e)

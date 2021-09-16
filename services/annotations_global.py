@@ -405,12 +405,23 @@ def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
 
     output = []
+    page_size = 10000
+    page_docs = []
+    cursor = None
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-        results = collection.where('_head', '==', True).stream()
-        for head_doc in results:
-            annotation = remove_reserved_fields(head_doc.to_dict())
-            output.append(annotation)
+        while True:
+            query = collection.where('_head', '==', True).limit(page_size).order_by('__name__')
+            if cursor:
+                query = query.start_after(cursor)
+            page_docs = [snapshot for snapshot in query.stream()]
+            for doc in page_docs:
+                annotation = remove_reserved_fields(doc.to_dict())
+                output.append(annotation)
+            if len(page_docs) < page_size:
+                break
+            else:
+                cursor = page_docs[page_size-1]
 
     except Exception as e:
         print(e)

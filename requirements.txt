@@ -28,7 +28,6 @@ itsdangerous==1.1.0
 Jinja2==2.11.3
 MarkupSafe==1.1.1
 multidict==5.1.0
-pkg_resources==0.0.0
 proto-plus==1.11.0
 protobuf==3.14.0
 pyasn1==0.4.8

@@ -409,12 +409,15 @@ def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends
     page_docs = []
     cursor = None
     try:
-        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
+        t0 = time.time()
         while True:
-            query = collection.where('_head', '==', True).limit(page_size).order_by('__name__')
+            query = collection.limit(page_size).order_by('__name__')
             if cursor:
                 query = query.start_after(cursor)
             page_docs = [snapshot for snapshot in query.stream()]
+            print(f'{len(page_docs)} retrieved, {len(output)} total processed in {time.time() - t0} secs')
+
             for doc in page_docs:
                 annotation = remove_reserved_fields(doc.to_dict())
                 output.append(annotation)

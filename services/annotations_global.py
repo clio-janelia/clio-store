@@ -12,12 +12,6 @@ from dependencies import get_dataset, get_user, User, version_str_to_int
 from stores import firestore, cache
 from google.cloud import firestore as google_firestore
 
-import logging as log
-import google.cloud.logging as logging
-
-logging_client = logging.Client()
-logging_client.setup_logging()
-
 router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
@@ -421,7 +415,7 @@ def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends
             if cursor:
                 query = query.start_after(cursor)
             page_docs = [snapshot for snapshot in query.stream()]
-            log.info(f'{len(page_docs)} retrieved, {len(output)} total processed in {time.time() - t0} secs')
+            print(f'{len(page_docs)} retrieved, {len(output)} total processed in {time.time() - t0} secs')
 
             for doc in page_docs:
                 annotation = remove_reserved_fields(doc.to_dict())

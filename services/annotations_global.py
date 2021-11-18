@@ -393,35 +393,42 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
 
 @router.get('/{dataset}/{annotation_type}/all', response_model=List)
 @router.get('/{dataset}/{annotation_type}/all/', response_model=List, include_in_schema=False)
-def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, pagesize: int = 10, total: int = 0, user: User = Depends(get_user)):
     """ Returns all current neuron annotation in the database.
         
     Returns:
 
         A JSON list of the annotations.
+
+    Query string options:
+
+        cursor: The annotation key of where to start our current page query.  Default = None.
+        pagesize: The number of annotations returned per query. Default = 10,000
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
 
     output = []
-    page_size = 10000
-    cursor = None
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
         t0 = time.time()
         while True:
-            query = collection.limit(page_size).order_by('__name__')
+            if total > 0 and len(output) + pagesize > total:
+                pagesize = total - len(output)
+            query = collection.limit(pagesize).order_by('__name__')
             if cursor:
-                query = query.start_after(cursor)
+                query = query.start_after({"__name__": cursor})
             retrieved = 0
             for snapshot in query.stream():
                 retrieved += 1
                 annotation = remove_reserved_fields(snapshot.to_dict())
                 output.append(annotation)
-                cursor = snapshot
+                cursor = snapshot.id
             print(f'{retrieved} retrieved, {len(output)} total processed in {time.time() - t0} secs')
-            if retrieved < page_size:
+            if retrieved < pagesize or len(output) == total:
                 break
+        if cursor:
+            output.append({"cursor": cursor})
 
     except Exception as e:
         print(e)

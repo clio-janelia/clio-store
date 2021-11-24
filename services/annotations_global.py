@@ -393,8 +393,7 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
     return found_tag
 
 async def annotation_streamer(collection):
-    # t0 = time.time()
-    pagesize = 1000
+    pagesize = 5000
     total = 0
     prepend = '['
     cursor = None
@@ -410,7 +409,6 @@ async def annotation_streamer(collection):
             yield prepend + json.dumps(annotation)
             cursor = snapshot.id
             prepend = ','
-        # print(f'{retrieved} retrieved, {total} total processed in {time.time() - t0} secs')
         if retrieved < pagesize:
             break
     yield ']'

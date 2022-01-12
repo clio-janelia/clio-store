@@ -16,6 +16,7 @@ from google.cloud import firestore as google_firestore
 router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
+MAX_ANNOTATIONS_RETURNED = 1000000
 
 set_fields = set(['tags'])
 
@@ -392,12 +393,11 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
         raise HTTPException(status_code=404, detail=f"Could not find uuid {uuid} for annotation type {annotation_type} in dataset {dataset}")
     return found_tag
 
-async def annotation_streamer(collection):
-    # t0 = time.time()
-    pagesize = 1000
+async def annotation_streamer(collection, cursor, size):
+    t0 = time.time()
     total = 0
     prepend = '['
-    cursor = None
+    pagesize = min(size, 5000)
     while True:
         query = collection.limit(pagesize).order_by('__name__')
         if cursor:
@@ -408,17 +408,25 @@ async def annotation_streamer(collection):
             total += 1
             annotation = remove_reserved_fields(snapshot.to_dict())
             yield prepend + json.dumps(annotation)
-            cursor = snapshot.id
             prepend = ','
-        # print(f'{retrieved} retrieved, {total} total processed in {time.time() - t0} secs')
-        if retrieved < pagesize:
+            cursor = snapshot.id
+            if total == size:
+                break
+        print(f'{retrieved} retrieved, {total} total processed in {time.time() - t0} secs')
+        if retrieved < pagesize or total == size:
             break
     yield ']'
 
 @router.get('/{dataset}/{annotation_type}/all')
 @router.get('/{dataset}/{annotation_type}/all/', include_in_schema=False)
-def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
     """ Returns all current neuron annotations for the given dataset and annotation type.
+
+    Query strings:
+
+        cursor (str): If supplied, annotations after the given id field are sent.
+
+        size (int): If supplied, at most this many annotations are returned.
         
     Returns:
 
@@ -434,7 +442,8 @@ def get_all_annotations(dataset: str, annotation_type: str, user: User = Depends
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
     
-    return StreamingResponse(annotation_streamer(collection), media_type='application/json')
+    cursor = f'id{cursor}'
+    return StreamingResponse(annotation_streamer(collection, cursor, size), media_type='application/json')
 
     
 @router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])

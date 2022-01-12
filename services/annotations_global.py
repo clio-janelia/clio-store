@@ -442,7 +442,8 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
     
-    cursor = f'id{cursor}'
+    if cursor:
+        cursor = f'id{cursor}'  # convert id into key format
     return StreamingResponse(annotation_streamer(collection, cursor, size), media_type='application/json')
 
     

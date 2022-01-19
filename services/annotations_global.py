@@ -193,7 +193,7 @@ def run_query_on_ids(collection, query, ids: List[int], id_field: str, version: 
     return output
 
 @google_firestore.transactional
-def update_in_transaction(transaction, head_ref, archived_ref, data: dict, conditional_fields: List[str], version: str):
+def update_in_transaction(transaction, head_ref, archived_ref, data: dict, conditional_fields: List[str], version: str, replace: bool):
     snapshot = head_ref.get(transaction=transaction)
     if not snapshot.exists:
         # first record for this body so create new HEAD
@@ -222,8 +222,14 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, condi
 
     if orig_data['_version'] <= version_int:
         # new data should be HEAD so archive current snapshot
-        updated = orig_data.copy()
-        updated.update(data)
+        if replace:
+            updated = data
+            updated['_head'] = True
+            updated['_archived_versions'] = orig_data['_archived_versions']
+            updated['_archived_keys'] = orig_data['_archived_keys']
+        else:
+            updated = orig_data.copy()
+            updated.update(data)
         orig_data['_head'] = False
         del orig_data['_archived_versions']
         del orig_data['_archived_keys']
@@ -248,7 +254,7 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, condi
         transaction.set(head_ref, orig_data)
 
 
-def write_annotation(collection, data: dict, id_field: str, conditional: List[str], version: str, user: User):
+def write_annotation(collection, data: dict, replace: bool, id_field: str, conditional: List[str], version: str, user: User):
     """ Write annotation transactionally, modifying HEAD and archiving old annotation """
     if not id_field in data:
         raise HTTPException(status_code=400, detail=f'the id field "{id_field}" must be included in every annotation: {data}')
@@ -271,10 +277,10 @@ def write_annotation(collection, data: dict, id_field: str, conditional: List[st
         transaction = firestore.db.transaction()
         head_ref = collection.document(head_key)
         archived_ref = collection.document()
-        update_in_transaction(transaction, head_ref, archived_ref, data, conditional, version)
+        update_in_transaction(transaction, head_ref, archived_ref, data, conditional, version, replace)
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n{data}")
+        raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n Data: {data}")
 
 @router.get('/{dataset}/{annotation_type}/fields', response_model=List)
 @router.get('/{dataset}/{annotation_type}/fields/', response_model=List, include_in_schema=False)
@@ -562,11 +568,14 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
 @router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
 def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", \
-                     conditional: str = "", version: str = "", user: User = Depends(get_user)):
+                     replace: bool = False, conditional: str = "", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
 
         Query strings:
+
+        replace (bool): If True (default False), posted values replace existing ones, so any non-existing
+            fields are removed.
 
         id_field (str): The field name that corresponds to the id, e.g., "bodyid"
 
@@ -589,7 +598,7 @@ def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dic
     if bool(conditional):
         conditional_fields = conditional.split(',')
     for annotation in payload:
-        write_annotation(collection, annotation, id_field, conditional_fields, version, user)
+        write_annotation(collection, annotation, replace, id_field, conditional_fields, version, user)
         num += 1
         if num % 100 == 0:
             print(f"Wrote {num} {annotation_type} annotations to dataset {dataset}...")

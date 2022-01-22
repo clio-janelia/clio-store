@@ -69,6 +69,10 @@ USER_REFRESH_SECS = 600.0
 MEMBERSHIPS_REFRESH_SECS = 600.0
 DATASET_REFRESH_SECS = 600.0
 
+class NeuprintServer(BaseModel):
+    dataset: str # What the dataset is called in the neuprint server
+    server: str  # name.domain.org
+
 class Dataset(BaseModel):
     title: Optional[str]
     description: str
@@ -79,6 +83,9 @@ class Dataset(BaseModel):
     mainLayer: Optional[str]
     neuroglancer: Optional[dict]
     versions: Optional[list]
+
+    typing: Optional[dict]
+    neuprintHTTP: Optional[NeuprintServer]
 
     bodyAnnotationSchema: Optional[dict]
     orderedLayers: Optional[list]
@@ -280,6 +287,8 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
     """Check token (either FlyEM or Google identity) and return user roles and data."""
     email = None
+
+    # Check if token is a "FlyEM token"
     if FLYEM_SECRET:
         try:
             decoded = jwt.decode(token, FLYEM_SECRET, algorithms="HS256")
@@ -289,6 +298,7 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
         except:
             pass
 
+    # Consider case when token passed is not a "FlyEM" token (with shared secret)
     if not email:
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -299,6 +309,7 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
             idinfo = id_token.verify_oauth2_token(token, requests.Request())
             email = idinfo["email"].lower()
         except exceptions.GoogleAuthError:
+            print(f"Non-FlyEM token is also not a Google identity token: {token}")
             raise credentials_exception
         except:
             print(f"no user token so using TEST_USER {TEST_USER}")
@@ -309,6 +320,7 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
 
     user = users.get_user(email)
     if user is None:
+        print(f"Valid token for user {email} but not associated with a valid user from Clio Firestore")
         raise credentials_exception
     return user
 

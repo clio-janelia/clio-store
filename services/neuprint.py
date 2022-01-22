@@ -3,13 +3,10 @@ import aiohttp
 from pydantic import BaseModel
 
 from config import *
-from dependencies import app, get_user, User
+from dependencies import app, get_user, get_dataset, User
 
 # token for accessing neuprint
 NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
-
-# neuprint address (TODO: move configuration to be in the dataset)
-NEUPRINT_URL="https://neuprint.janelia.org/api/custom/custom"
 
 router = APIRouter()
 
@@ -38,8 +35,14 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
     if not user.has_role("clio_general", dataset):
         raise HTTPException(status_code=403, detail="user doesn't have authorization for this dataset")
 
+    cur_dataset = get_dataset(dataset)
+    if cur_dataset.neuprintHTTP:
+        neuprint_server = cur_dataset.neuprintHTTP.server
+    else:
+        raise HTTPException(status_code=400, detail="dataset {dataset} has no assigned neuprint server")
+
     try:
-        async with client_session.post(NEUPRINT_URL, data=payload.json(), headers=neuprint_headers) as resp:
+        async with client_session.post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=neuprint_headers) as resp:
             response = await resp.json()
     except Exception as e:
         print(e)

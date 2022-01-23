@@ -39,7 +39,7 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
     if cur_dataset.neuprintHTTP:
         neuprint_server = cur_dataset.neuprintHTTP.server
     else:
-        raise HTTPException(status_code=400, detail="dataset {dataset} has no assigned neuprint server")
+        raise HTTPException(status_code=400, detail=f"dataset {dataset} has no assigned neuprint server")
 
     try:
         async with client_session.post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=neuprint_headers) as resp:

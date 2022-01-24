@@ -22,7 +22,7 @@ def post_datasets(datasets: Dict[str, Dataset], current_user: User = Depends(get
             collection.document(dataset_id).set(dataset.dict(exclude_unset=True))
     except Exception as e:
         print(e)
-        raise HTTPException(status_code=400, detail="error in POSTing datasets")
+        raise HTTPException(status_code=400, detail="error in POSTing datasets: {e}")
 
 @router.delete('')
 @router.delete('/', include_in_schema=False)

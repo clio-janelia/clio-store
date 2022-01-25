@@ -491,9 +491,22 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
+def merge_annotations(merged: list, current: list, id_field: str):
+    """Merge list of annotations (dict) such that in the list, the id_field field is unique."""
+    if len(current) == 0:
+        return
+    past_ids = set()
+    for annotation in merged:
+        if id_field in annotation:
+            past_ids.add(annotation[id_field])
+    for annotation in current:
+        if id_field in annotation and annotation[id_field] not in past_ids:
+            merged.append(annotation)
+
+
 @router.post('/{dataset}/{annotation_type}/query', response_model=List)
 @router.post('/{dataset}/{annotation_type}/query/', response_model=List, include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, query: dict, version: str = "", changes: bool = False, \
+def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict], Dict], version: str = "", changes: bool = False, \
                     id_field: str = "bodyid", onlyid: bool = False, user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
@@ -501,6 +514,9 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
     Example:
     { "bodyid": 23, "hemilineage": "0B", ... }
     Each field value must be true, i.e., the conditions or ANDed together.
+
+    If a list of queries (JSON object per query) is POSTed, the results for each query or ORed
+    together with duplicate annotations removed.
         
     Query strings:
 
@@ -525,44 +541,53 @@ def get_annotations(dataset: str, annotation_type: str, query: dict, version: st
 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
-
-        nonid_query = collection
-        ids = []
-        for key in query:
-            if key == id_field:
-                if isinstance(query[key], int):
-                    ids = [query[key]]
-                elif isinstance(query[key], list):
-                    ids = query[key]
-                else:
-                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"id field must be int or list of ints, got: {query[key]}")
-                continue
-            else:
-                if key in set_fields:
-                    op = "array_contains"
-                elif isinstance(query[key], list):
-                    if len(query[key]) > 10:
-                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
-                    if len(query[key]) == 1:  # counters apparent issue with using 'in'. TODO: determine underlying issue.
-                        op = "=="
-                        query[key] = query[key][0]
+        results = []
+        if isinstance(query, dict):
+            query = [query]
+        query_num = 1
+        for cur_query in query:
+            nonid_query = collection
+            ids = []
+            for key in cur_query:
+                if key == id_field:
+                    if isinstance(cur_query[key], int):
+                        ids = [cur_query[key]]
+                    elif isinstance(cur_query[key], list):
+                        ids = cur_query[key]
                     else:
-                        op = "in"
+                        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"id field must be int or list of ints, got: {cur_query[key]}")
+                    continue
                 else:
-                    op = "=="
-                nonid_query = nonid_query.where(key, op, query[key])
+                    if key in set_fields:
+                        op = "array_contains"
+                    elif isinstance(cur_query[key], list):
+                        if len(cur_query[key]) > 10:
+                            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"currently no more than 10 values can be queried at a time")
+                        if len(cur_query[key]) == 1:  # counters apparent issue with using 'in'. TODO: determine underlying issue.
+                            op = "=="
+                            cur_query[key] = cur_query[key][0]
+                        else:
+                            op = "in"
+                    else:
+                        op = "=="
+                    nonid_query = nonid_query.where(key, op, cur_query[key])
 
-        if len(ids) == 0:
-            return run_query(collection, nonid_query, id_field, version, changes, onlyid)
-        
-        return run_query_on_ids(collection, nonid_query, ids, id_field, version, changes, onlyid)
-
+            if len(ids) == 0:
+                cur_results = run_query(collection, nonid_query, id_field, version, changes, onlyid)
+            else:
+                cur_results = run_query_on_ids(collection, nonid_query, ids, id_field, version, changes, onlyid)
+            if query_num > 1:  # Or these results into previous
+                merge_annotations(results, cur_results, id_field)
+            else:
+                results = cur_results
+            query_num += 1
 
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
+    
+    return results
 
-#conditional: Union[List[str], str] = []
 @router.put('/{dataset}/{annotation_type}')
 @router.post('/{dataset}/{annotation_type}')
 @router.put('/{dataset}/{annotation_type}/', include_in_schema=False)

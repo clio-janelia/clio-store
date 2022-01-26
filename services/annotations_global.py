@@ -442,6 +442,7 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
 
+    docs = []
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
     except Exception as e:
@@ -451,6 +452,31 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
     if cursor:
         cursor = f'id{cursor}'  # convert id into key format
     return StreamingResponse(annotation_streamer(collection, cursor, size), media_type='application/json')
+
+
+@router.get('/{dataset}/{annotation_type}/all-test')
+@router.get('/{dataset}/{annotation_type}/all-test/', include_in_schema=False)
+def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
+    """ Returns all current neuron annotations for the given dataset and annotation type.
+
+    Returns:
+
+        A JSON list of the annotations.
+
+    """
+    if not user.can_read(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
+
+    docs = []
+    try:
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
+        for doc in collection.stream():
+            docs.append(doc)
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
+    
+    return docs
 
     
 @router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])

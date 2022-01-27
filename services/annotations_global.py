@@ -471,7 +471,7 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
         for doc in collection.stream():
-            docs.append(doc)
+            docs.append(doc.to_dict())
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")

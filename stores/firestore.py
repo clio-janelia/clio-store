@@ -1,6 +1,10 @@
 from google.cloud import firestore
 from pydantic.typing import List, Union
 
+def get_transaction():
+    db = firestore.Client()
+    return db.transaction()
+
 def get_collection(path: Union[str, List[str]]):
     """Return a firestore collection given a path of collection/document/collection...
 

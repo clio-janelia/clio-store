@@ -274,7 +274,7 @@ def write_annotation(collection, data: dict, replace: bool, id_field: str, condi
         cache.set_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', value=fields, path=['neurons', 'VNC', 'fields'])
 
     try:
-        transaction = google_firestore.db.transaction()
+        transaction = firestore.get_transaction()
         head_ref = collection.document(head_key)
         archived_ref = collection.document()
         update_in_transaction(transaction, head_ref, archived_ref, data, conditional, version, replace)

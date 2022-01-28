@@ -1,8 +1,6 @@
 from google.cloud import firestore
 from pydantic.typing import List, Union
 
-db = firestore.Client()
-
 def get_collection(path: Union[str, List[str]]):
     """Return a firestore collection given a path of collection/document/collection...
 
@@ -13,6 +11,7 @@ def get_collection(path: Union[str, List[str]]):
     if path is None:
         raise ValueError('path must exist')
 
+    db = firestore.Client()
     if isinstance(path, str):
         return db.collection(path)
 

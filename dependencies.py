@@ -234,10 +234,11 @@ class UserCache(BaseModel):
 
     def refresh_cache(self) -> Dict[str, User]:
         users = {}
+        t0 = time.time()
         for user_ref in self.collection.get():
             users[user_ref.id] = self.refresh_user(user_ref)
         self.memberships_updated == time.time()
-        print(f"Cached {len(self.cache)} user metadata and {len(self.memberships)} groups")
+        print(f"Cached {len(self.cache)} user metadata and {len(self.memberships)} groups in {time.time() - t0} secs.")
         return users
 
     def get_user(self, email: str) -> User:
@@ -247,7 +248,9 @@ class UserCache(BaseModel):
             if age > USER_REFRESH_SECS:
                 user = None
         if user is None:
+            t0 = time.time()
             user_ref = self.collection.document(email).get()
+            print(f"get_user {email} took {time.time() - t0} secs")
             if user_ref.exists:
                 user = self.refresh_user(user_ref)
             else:

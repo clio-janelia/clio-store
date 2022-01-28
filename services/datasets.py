@@ -1,3 +1,4 @@
+import time
 from config import *
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -97,6 +98,7 @@ def replace_templates(data):
 def get_datasets(templates: bool = False, current_user: User = Depends(get_user)):
     try:
         collection = firestore.get_collection(CLIO_DATASETS)
+        t0 = time.time()
         datasets_out = {}
         for dataset in collection.stream():
             dataset_info = dataset.to_dict()
@@ -105,7 +107,9 @@ def get_datasets(templates: bool = False, current_user: User = Depends(get_user)
                     datasets_out[dataset.id] = dataset_info
                 else:
                     datasets_out[dataset.id] = replace_templates(dataset_info)
+        print(f'Retrieved {len(datasets_out)} datasets in {time.time() - t0} seconds')
         return datasets_out
+
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail="error in retrieving datasets' metadata")

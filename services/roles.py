@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from typing import Set
 
 from config import *
-from dependencies import get_user,users, User
+from dependencies import get_user, User
 from stores import firestore
 
 router = APIRouter()

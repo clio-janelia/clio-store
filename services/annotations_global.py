@@ -429,17 +429,13 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
             if cursor:
                 query = query.start_after({"__name__": cursor})
             t1 = time.time()
-            records = query.get()
-            print(f'retrieved {len(records)} in {time.time() - t1} secs')
-            t1 = time.time()
             retrieved = 0
-            for snapshot in records:
+            for snapshot in query.stream():
                 retrieved += 1
                 annotation = remove_reserved_fields(snapshot.to_dict())
                 output.append(annotation)
                 cursor = snapshot.id
-            print(f'processed {len(records)} in {time.time() - t1} secs')
-            print(f'{len(output)} total processed in {time.time() - t0} secs')
+            print(f'processed {retrieved} in {time.time() - t1} secs')
             if retrieved < pagesize or len(output) == size:
                 break
 
@@ -447,6 +443,7 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
+    print(f'{len(output)} total processed in {time.time() - t0} secs')
     return output
 
     

@@ -274,7 +274,7 @@ def write_annotation(collection, data: dict, replace: bool, id_field: str, condi
         cache.set_value(collection_path=[CLIO_ANNOTATIONS_GLOBAL], document='metadata', value=fields, path=['neurons', 'VNC', 'fields'])
 
     try:
-        transaction = firestore.get_transaction()
+        transaction = firestore.db.transaction()
         head_ref = collection.document(head_key)
         archived_ref = collection.document()
         update_in_transaction(transaction, head_ref, archived_ref, data, conditional, version, replace)
@@ -399,30 +399,6 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
         raise HTTPException(status_code=404, detail=f"Could not find uuid {uuid} for annotation type {annotation_type} in dataset {dataset}")
     return found_tag
 
-async def annotation_streamer(collection, cursor, size):
-    t0 = time.time()
-    total = 0
-    prepend = '['
-    pagesize = min(size, 5000)
-    while True:
-        query = collection.limit(pagesize).order_by('__name__')
-        if cursor:
-            query = query.start_after({"__name__": cursor})
-        retrieved = 0
-        for snapshot in query.stream():
-            retrieved += 1
-            total += 1
-            annotation = remove_reserved_fields(snapshot.to_dict())
-            yield prepend + json.dumps(annotation)
-            prepend = ','
-            cursor = snapshot.id
-            if total == size:
-                break
-        print(f'{retrieved} retrieved, {total} total processed in {time.time() - t0} secs')
-        if retrieved < pagesize or total == size:
-            break
-    yield ']'
-
 @router.get('/{dataset}/{annotation_type}/all')
 @router.get('/{dataset}/{annotation_type}/all/', include_in_schema=False)
 def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
@@ -441,16 +417,37 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")
-
+    if cursor:
+        cursor = f'id{cursor}'  # convert id into key format
+    output = []
     try:
+        t0 = time.time()
         collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset]).where('_head', '==', True)
+        pagesize = min(size, 5000)
+        while True:
+            query = collection.limit(pagesize).order_by('__name__')
+            if cursor:
+                query = query.start_after({"__name__": cursor})
+            t1 = time.time()
+            records = query.get()
+            print(f'retrieved {len(records)} in {time.time() - t1} secs')
+            t1 = time.time()
+            retrieved = 0
+            for snapshot in records:
+                retrieved += 1
+                annotation = remove_reserved_fields(snapshot.to_dict())
+                output.append(annotation)
+                cursor = snapshot.id
+            print(f'processed {len(records)} in {time.time() - t1} secs')
+            print(f'{retrieved} retrieved, {len(records)} total processed in {time.time() - t0} secs')
+            if retrieved < pagesize or len(output) == size:
+                break
+
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
-    
-    if cursor:
-        cursor = f'id{cursor}'  # convert id into key format
-    return StreamingResponse(annotation_streamer(collection, cursor, size), media_type='application/json')
+
+    return output
 
     
 @router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])

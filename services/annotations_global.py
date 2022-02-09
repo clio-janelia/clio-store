@@ -439,7 +439,7 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
                 output.append(annotation)
                 cursor = snapshot.id
             print(f'processed {len(records)} in {time.time() - t1} secs')
-            print(f'{retrieved} retrieved, {len(records)} total processed in {time.time() - t0} secs')
+            print(f'{len(output)} total processed in {time.time() - t0} secs')
             if retrieved < pagesize or len(output) == size:
                 break
 

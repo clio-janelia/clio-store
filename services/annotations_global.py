@@ -485,6 +485,31 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
+@router.delete('/{dataset}/{annotation_type}/id-number/{id}')
+@router.delete('/{dataset}/{annotation_type}/id-number/{id}/', include_in_schema=False)
+def delete_annotations(dataset: str, annotation_type: str, id: str, id_field: str = "bodyid", user: User = Depends(get_user)):
+    """ Deletes the neuron annotation associated with the given id (requires permission).
+        
+    """
+    if not user.is_dataset_admin(dataset):
+        raise HTTPException(status_code=401, detail=f"no permission for admin access on dataset {dataset}")
+    
+    try:
+        collection = firestore.get_collection([CLIO_ANNOTATIONS_GLOBAL, annotation_type, dataset])
+        key = "id" + id
+        ref = collection.document(key)
+        snapshot = ref.get()
+        if snapshot.exists:
+            pass
+        else:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=f"no annotation with id {id}")
+        collection.document(key).delete()
+
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=400, detail=f"error in deleting annotation for id {id}, dataset {dataset}: {e}")
+
+
 def merge_annotations(merged: list, current: list, id_field: str):
     """Merge list of annotations (dict) such that in the list, the id_field field is unique."""
     if len(current) == 0:
@@ -509,7 +534,7 @@ def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict],
     { "bodyid": 23, "hemilineage": "0B", ... }
     Each field value must be true, i.e., the conditions or ANDed together.
 
-    If a list of queries (JSON object per query) is POSTed, the results for each query or ORed
+    If a list of queries (JSON object per query) is POSTed, the results for each query are ORed
     together with duplicate annotations removed.
         
     Query strings:

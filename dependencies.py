@@ -196,8 +196,15 @@ class User(BaseModel):
             return True
         return "clio_write" in self.datasets.get(dataset, set())
     
+    def is_dataset_admin(self, dataset: str = "") -> bool:
+        if "admin" in self.global_roles:
+            return True
+        dataset_roles = self.datasets.get(dataset, set())
+        return "dataset_admin" & dataset_roles
+    
     def is_admin(self) -> bool:
         return "admin" in self.global_roles
+
 
 class UserCache(BaseModel):
     collection: Any # users collection

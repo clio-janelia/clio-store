@@ -200,7 +200,7 @@ class User(BaseModel):
         if "admin" in self.global_roles:
             return True
         dataset_roles = self.datasets.get(dataset, set())
-        return "dataset_admin" & dataset_roles
+        return set(["dataset_admin"]) & dataset_roles
     
     def is_admin(self) -> bool:
         return "admin" in self.global_roles

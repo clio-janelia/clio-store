@@ -10,6 +10,7 @@ from pydantic import BaseModel, ValidationError, root_validator
 from config import *
 from dependencies import group_members, get_user, User
 from stores import firestore
+from google.cloud import firestore as google_firestore
 
 router = APIRouter()
 
@@ -113,18 +114,42 @@ class KeyResponse(BaseModel):
 class KeyResponses(BaseModel):
     keys: List[str]
 
-def write_annotation(dataset: str, annotation: Annotation, user: User, move_key: str = "") -> str:
+
+@google_firestore.transactional
+def update_in_transaction(transaction, ref, annotation: Annotation, replace: bool = True, conditional_fields: List[str] = []):
+    new_data = jsonable_encoder(annotation, exclude_unset=True)
+    if replace:
+        data = new_data
+    else:
+        snapshot = ref.get(transaction=transaction)
+        if snapshot.exists:
+            data = snapshot.to_dict()
+        else:
+            data = {}
+
+        # if there are conditional fields that already exist, delete them.
+        for field in conditional_fields:
+            if field in data and field in new_data and bool(data[field]):
+                del new_data[field]
+        data.update(new_data)
+
+    transaction.set(ref, data)
+
+
+def write_annotation(dataset: str, annotation: Annotation, user: User, move_key: str = "", replace: bool = True, conditional_fields: List[str] = []) -> str:
     if annotation.user is None:
         annotation.user = user.email
     authorized = (annotation.user == user.email and user.can_write_own(dataset)) or \
                  (annotation.user != user.email and user.can_write_others(dataset))
     if not authorized:
         raise HTTPException(status_code=401, detail=f"no permission to add annotation for user {annotation.user} on dataset {dataset}")
+
     try:
         collection = firestore.get_collection([CLIO_ANNOTATIONS_V2, dataset, annotation.user])
-        annotation_json = jsonable_encoder(annotation, exclude_unset=True)
+        transaction = firestore.db.transaction()
         key = annotation.key()
-        collection.document(key).set(annotation_json)
+        ref = collection.document(key)
+        update_in_transaction(transaction, ref, annotation, replace, conditional_fields)
         if move_key != "" and move_key != key:
             collection.document(move_key).delete()
         return key
@@ -138,20 +163,37 @@ PutResponse = Union[KeyResponse, KeyResponses]
 @router.post('/{dataset}', response_model=PutResponse)
 @router.put('/{dataset}/', response_model=PutResponse, include_in_schema=False)
 @router.post('/{dataset}/', response_model=PutResponse, include_in_schema=False)
-def post_annotations(dataset: str, payload: Union[Annotation, List[Annotation]], move_key: str = "", user: User = Depends(get_user)):
+def post_annotations(dataset: str, payload: Union[Annotation, List[Annotation]], move_key: str = "", 
+                     replace: bool = True, conditional: str = "", user: User = Depends(get_user)):
     """ Allows adding annotations or moving a single annotation.  POST should be either a single
-        annotation object or a list of objects.  If a single annotation, can also use 'move_key=oldkey' 
-        query string to remove old annotation with key 'oldkey'.  If POSTing a list of annotations,
-        the 'move_key' query string is ignored. Returns JSON with "key" or "keys" property holding
+        annotation object or a list of objects.  Returns JSON with "key" or "keys" property holding
         a single key or a list of keys in the same order as the POSTed annotations.
+
+        Query strings:
+
+        move_key (str): If a single annotation, can also use 'move_key=oldkey' query string to remove 
+            old annotation with key 'oldkey'.  If POSTing a list of annotations, the 'move_key' query 
+            string is ignored. 
+
+        replace (bool): If False (default True), only posted fields modify the original annotation and
+            any fields not in the POSTed annotation are unaffected.  Note that the default is opposite
+            from POST /json-annotations.
+
+        conditional (str): A field name or list of names separated by commas that should only be written
+            if the field is currently non-existant or empty. This is ignored under default replace
+            behavior, so replace must be set to False for this option to be used.
     """
+    conditional_fields = []
+    if bool(conditional):
+        conditional_fields = conditional.split(',')
+
     if isinstance(payload, Annotation):
-        key = write_annotation(dataset, payload, user, move_key)
+        key = write_annotation(dataset, payload, user, move_key, replace, conditional_fields)
         return KeyResponse(key=key)
     else:
         keys = []
         for annotation in payload:
-            keys.append(write_annotation(dataset, annotation, user))
+            keys.append(write_annotation(dataset, annotation, user, replace, conditional_fields))
         return KeyResponses(keys=keys)
 
 @router.delete('/{dataset}/{key}')

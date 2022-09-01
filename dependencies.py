@@ -79,6 +79,7 @@ class Dataset(BaseModel):
 
     tag: Optional[str]
     uuid: Optional[str]
+    dvid: Optional[str] # The base URL including http or https for dvid server.
 
     mainLayer: Optional[str]
     neuroglancer: Optional[dict]

@@ -20,6 +20,8 @@ MAX_ANNOTATIONS_RETURNED = 1000000
 
 set_fields = set(['tags'])
 
+dataset = 'VNC' # hack to get this dataset using different code base than other datasets.
+
 def remove_reserved_fields(data: dict):
     """Returns copy of the dict with any reserved fields removed"""
     del_list = []
@@ -282,9 +284,9 @@ def write_annotation(collection, data: dict, replace: bool, id_field: str, condi
         print(e)
         raise HTTPException(status_code=400, detail=f"error in writing annotation to version {version}: {e}\n Data: {data}")
 
-@router.get('/{dataset}/{annotation_type}/fields', response_model=List)
-@router.get('/{dataset}/{annotation_type}/fields/', response_model=List, include_in_schema=False)
-def get_fields(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/fields', response_model=List)
+@router.get('/{annotation_type}/fields/', response_model=List, include_in_schema=False)
+def get_fields(annotation_type: str, user: User = Depends(get_user)):
     """ Returns all fields within annotations for the given scope.
         
     Returns:
@@ -299,9 +301,9 @@ def get_fields(dataset: str, annotation_type: str, user: User = Depends(get_user
         raise HTTPException(status_code=404, detail=f"Could not find any fields for annotation type {annotation_type} in dataset {dataset}")
     return fields
 
-@router.get('/{dataset}/{annotation_type}/versions', response_model=dict)
-@router.get('/{dataset}/{annotation_type}/versions/', response_model=dict, include_in_schema=False)
-def get_versions(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/versions', response_model=dict)
+@router.get('/{annotation_type}/versions/', response_model=dict, include_in_schema=False)
+def get_versions(annotation_type: str, user: User = Depends(get_user)):
     """ Returns the versions for the given scope.
         
     Returns:
@@ -316,9 +318,9 @@ def get_versions(dataset: str, annotation_type: str, user: User = Depends(get_us
         raise HTTPException(status_code=404, detail=f"Could not find any tag_to_uuid for annotation type {annotation_type} in dataset {dataset}")
     return tag_to_uuid
 
-@router.get('/{dataset}/{annotation_type}/head_tag', response_model=str)
-@router.get('/{dataset}/{annotation_type}/head_tag/', response_model=str, include_in_schema=False)
-def get_head_tag(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/head_tag', response_model=str)
+@router.get('/{annotation_type}/head_tag/', response_model=str, include_in_schema=False)
+def get_head_tag(annotation_type: str, user: User = Depends(get_user)):
     """ Returns the head version tag for the given scope.
         
     Returns:
@@ -333,9 +335,9 @@ def get_head_tag(dataset: str, annotation_type: str, user: User = Depends(get_us
         raise HTTPException(status_code=404, detail=f"Could not find any head_tag for annotation type {annotation_type} in dataset {dataset}")
     return head_tag
 
-@router.get('/{dataset}/{annotation_type}/head_uuid', response_model=str)
-@router.get('/{dataset}/{annotation_type}/head_uuid/', response_model=str, include_in_schema=False)
-def get_head_uuid(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/head_uuid', response_model=str)
+@router.get('/{annotation_type}/head_uuid/', response_model=str, include_in_schema=False)
+def get_head_uuid(annotation_type: str, user: User = Depends(get_user)):
     """ Returns the head version uuid for the given scope.
         
     Returns:
@@ -350,9 +352,9 @@ def get_head_uuid(dataset: str, annotation_type: str, user: User = Depends(get_u
         raise HTTPException(status_code=404, detail=f"Could not find any head_uuid for annotation type {annotation_type} in dataset {dataset}")
     return head_uuid
 
-@router.get('/{dataset}/{annotation_type}/tag_to_uuid/{tag}', response_model=str)
-@router.get('/{dataset}/{annotation_type}/tag_to_uuid/{tag}/', response_model=str, include_in_schema=False)
-def get_tag_to_uuid(dataset: str, annotation_type: str, tag: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/tag_to_uuid/{tag}', response_model=str)
+@router.get('/{annotation_type}/tag_to_uuid/{tag}/', response_model=str, include_in_schema=False)
+def get_tag_to_uuid(annotation_type: str, tag: str, user: User = Depends(get_user)):
     """ Returns the corresponding dvid UUID of the given tag for the given scope.
         
     Returns:
@@ -369,9 +371,9 @@ def get_tag_to_uuid(dataset: str, annotation_type: str, tag: str, user: User = D
         raise HTTPException(status_code=404, detail=f"Could not find tag {tag} for annotation type {annotation_type} in dataset {dataset}")
     return tag_to_uuid[tag]
 
-@router.get('/{dataset}/{annotation_type}/uuid_to_tag/{uuid}', response_model=str)
-@router.get('/{dataset}/{annotation_type}/uuid_to_tag/{uuid}/', response_model=str, include_in_schema=False)
-def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/uuid_to_tag/{uuid}', response_model=str)
+@router.get('/{annotation_type}/uuid_to_tag/{uuid}/', response_model=str, include_in_schema=False)
+def get_uuid_to_tag(annotation_type: str, uuid: str, user: User = Depends(get_user)):
     """ Returns the corresponding string tag for the given dvid UUID for the given scope.
         
     Returns:
@@ -399,9 +401,9 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
         raise HTTPException(status_code=404, detail=f"Could not find uuid {uuid} for annotation type {annotation_type} in dataset {dataset}")
     return found_tag
 
-@router.get('/{dataset}/{annotation_type}/all')
-@router.get('/{dataset}/{annotation_type}/all/', include_in_schema=False)
-def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
+@router.get('/{annotation_type}/all')
+@router.get('/{annotation_type}/all/', include_in_schema=False)
+def get_all_annotations(annotation_type: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
     """ Returns all current neuron annotations for the given dataset and annotation type.
 
     Query strings:
@@ -447,9 +449,9 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
     return output
 
     
-@router.get('/{dataset}/{annotation_type}/id-number/{id}', response_model=Union[List, dict])
-@router.get('/{dataset}/{annotation_type}/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
+@router.get('/{annotation_type}/id-number/{id}', response_model=Union[List, dict])
+@router.get('/{annotation_type}/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
+def get_annotations(annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
     """ Returns the neuron annotation associated with the given id.
         
     Query strings:
@@ -485,9 +487,9 @@ def get_annotations(dataset: str, annotation_type: str, id: str, version: str = 
         print(e)
         raise HTTPException(status_code=400, detail=f"error in retrieving annotations for dataset {dataset}: {e}")
 
-@router.delete('/{dataset}/{annotation_type}/id-number/{id}')
-@router.delete('/{dataset}/{annotation_type}/id-number/{id}/', include_in_schema=False)
-def delete_annotations(dataset: str, annotation_type: str, id: str, id_field: str = "bodyid", user: User = Depends(get_user)):
+@router.delete('/{annotation_type}/id-number/{id}')
+@router.delete('/{annotation_type}/id-number/{id}/', include_in_schema=False)
+def delete_annotations(annotation_type: str, id: str, id_field: str = "bodyid", user: User = Depends(get_user)):
     """ Deletes the neuron annotation associated with the given id (requires permission).
         
     """
@@ -523,9 +525,9 @@ def merge_annotations(merged: list, current: list, id_field: str):
             merged.append(annotation)
 
 
-@router.post('/{dataset}/{annotation_type}/query', response_model=List)
-@router.post('/{dataset}/{annotation_type}/query/', response_model=List, include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict], Dict], version: str = "", changes: bool = False, \
+@router.post('/{annotation_type}/query', response_model=List)
+@router.post('/{annotation_type}/query/', response_model=List, include_in_schema=False)
+def get_annotations(annotation_type: str, query: Union[List[Dict], Dict], version: str = "", changes: bool = False, \
                     id_field: str = "bodyid", onlyid: bool = False, user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
@@ -607,11 +609,11 @@ def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict],
     
     return results
 
-@router.put('/{dataset}/{annotation_type}')
-@router.post('/{dataset}/{annotation_type}')
-@router.put('/{dataset}/{annotation_type}/', include_in_schema=False)
-@router.post('/{dataset}/{annotation_type}/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", \
+@router.put('/{annotation_type}')
+@router.post('/{annotation_type}')
+@router.put('/{annotation_type}/', include_in_schema=False)
+@router.post('/{annotation_type}/', include_in_schema=False)
+def post_annotations(annotation_type: str, payload: Union[List[Dict], Dict], id_field: str = "bodyid", \
                      replace: bool = False, conditional: str = "", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.

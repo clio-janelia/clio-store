@@ -1,4 +1,4 @@
-name: clio-store
+name: base
 channels:
   - flyem-forge
   - conda-forge
@@ -269,4 +269,3 @@ dependencies:
   - yarl=1.7.2=py310h5764c6d_2
   - zlib=1.2.12=h166bdaf_2
   - zstd=1.5.2=h6239696_4
-prefix: /home/katzw/miniconda3/envs/clio-store

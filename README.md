@@ -10,37 +10,29 @@ is built into the system, allowing selective read/write/metadata access to datas
 
 Setup Local Python Environment:
 
-(If the Python install fails, see: https://github.com/pyenv/pyenv/wiki/Common-build-problems)
+Requires [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html) 
+or [mamba](https://mamba.readthedocs.io/en/latest/installation.html) to be installed.
 
 ```
-git clone https://github.com/pyenv/pyenv.git .pyenv
-export PYENV_ROOT=.pyenv
-.pyenv/bin/pyenv install 3.9.5
-eval "$(.pyenv/bin/pyenv init -)"
-python -m venv venv
-source venv/bin/activate
-pip install -U pip
-pip install -r requirements.txt
+conda create -f environment.yml
+conda activate clio-store
 ```
 
-Run the server locally:
+### Run the server locally:
 ```
-% uvicorn main:app --reload
-```
-
-Check it out: http://localhost:8000/docs
-
-Run Locally with Buildpacks & Docker:
-* Install docker
-* Modify required environment variables (see below)
-```
-pack build --builder=gcr.io/buildpacks/builder clio-store
-docker run -it -ePORT=8000 -p8000:8000 clio-store
+uvicorn main:app --reload
 ```
 
-Run on Cloud Run:
+Then check it out: http://localhost:8000/
 
-[![Run on Google Cloud](https://deploy.cloud.run/button.svg)](https://deploy.cloud.run)
+### Run on Cloud Run:
+
+```
+gcloud builds submit --tag gcr.io/[PROJECT_ID]/clio-store
+gcloud run deploy --image gcr.io/[PROJECT_ID]/clio-store --platform managed
+```
+
+The first `gcloud builds` command will build the docker image and push it to the Google Container Registry. The second `gcloud run` command will deploy the image to Cloud Run. The `--platform managed` flag is required to deploy to Cloud Run on Google Cloud.
 
 ## Environment variables 
 

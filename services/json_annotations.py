@@ -4,7 +4,7 @@
 # neuronjson instance "segmentation_annotations".
 
 import time
-import ujson
+import json
 import requests
 
 from fastapi import status, APIRouter, Depends, HTTPException, Response
@@ -294,7 +294,7 @@ def get_dvid_annotations(dataset: str, version: str, ids: List[int]):
     try:
         # annotations = {}
         # for kv in keyvalues.kvs:
-        #     annotations[kv.key] = ujson.loads(kv.value) if kv.value else None
+        #     annotations[kv.key] = json.loads(kv.value) if kv.value else None
         json_out = "["
         for kv in keyvalues.kvs:
             json_out += f'"{str(kv.key)}": {kv.value.decode() if kv.value else "{}"},'

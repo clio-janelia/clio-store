@@ -297,7 +297,7 @@ def get_dvid_annotations(dataset: str, version: str, ids: List[int]):
         #     annotations[kv.key] = json.loads(kv.value) if kv.value else None
         json_out = "["
         for kv in keyvalues.kvs:
-            json_out += f'"{str(kv.key)}": {kv.value.decode() if kv.value else "{}"},'
+            json_out += f'{kv.value.decode() if kv.value else "{}"},'
         json_out = json_out[:-1] + "]"
         
     except ValueError as e:

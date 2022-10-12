@@ -533,8 +533,10 @@ def get_annotations(annotation_type: str, query: Union[List[Dict], Dict], versio
 
     The JSON query format uses field names as the keys, and desired values.
     Example:
-    { "bodyid": 23, "hemilineage": "0B", ... }
+    { "bodyid": [23, 101], "hemilineage": "0B", ... }
     Each field value must be true, i.e., the conditions or ANDed together.
+    If the field value is a list, selected annotations must be a value in the list.
+    For example, annotations with "bodyid" of 23 or 101 are selected in example above.
 
     If a list of queries (JSON object per query) is POSTed, the results for each query are ORed
     together with duplicate annotations removed.

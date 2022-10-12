@@ -44,7 +44,7 @@ def dvid_base_url(dataset: str, version: str) -> str:
     # Default to DVID server HEAD if no version indicated
     if len(version) == 0:
         dataset_cache = get_dataset(dataset)
-        version = dataset_cache.uuid    
+        version = dataset_cache.uuid
 
     # Construct the base url based on the dvid server for the dataset
     cur_dataset = get_dataset(dataset)
@@ -57,7 +57,7 @@ def dvid_base_url(dataset: str, version: str) -> str:
 
 
 def dvid_request(url: str, payload=None):
-    print(f"Performing GET {url} with payload of {len(payload)} bytes")
+    print(f"Performing GET {url} with payload of {len(payload) if payload else 'no'} bytes")
     if payload:
         r = requests.get(url, data=payload)
     else:
@@ -72,7 +72,7 @@ def dvid_request(url: str, payload=None):
 
 def dvid_request_json(url: str, payload=None):
     content = dvid_request(url, payload)
-    annot_json_str = str(content.decode()) # + "}" # handle issue 356 before correcting it in dvid
+    annot_json_str = str(content.decode()) 
     return json.loads(annot_json_str)
 
 
@@ -92,30 +92,24 @@ def can_read(func):
 @can_read
 @router.get('/{dataset}/neurons/fields', response_model=List)
 @router.get('/{dataset}/neurons/fields/', response_model=List, include_in_schema=False)
-def get_fields(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_fields(dataset: str, user: User = Depends(get_user)):
     """ Returns all fields within annotations for the given scope.
         
     Returns:
 
         A JSON list of the fields present in at least one annotation.
     """
-    fields = cache.get_value(
-        collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
-        document='metadata',
-        path=['neurons', dataset, 'fields']
-    )
-    if not fields:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, 
-            detail=f"Could not find any fields for annotation type neurons in dataset {dataset}"
-        )
-    return fields
+    base_url = dvid_base_url(dataset, "")
+    url = f"{base_url}/segmentation_annotations/fields"
+
+    responseBytes = dvid_request(url)
+    return Response(content=responseBytes, media_type="application/json")
 
 
 @can_read
 @router.get('/{dataset}/neurons/versions', response_model=dict)
 @router.get('/{dataset}/neurons/versions/', response_model=dict, include_in_schema=False)
-def get_versions(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_versions(dataset: str, user: User = Depends(get_user)):
     """ Returns the versions for the given scope.
         
     Returns:
@@ -138,7 +132,7 @@ def get_versions(dataset: str, annotation_type: str, user: User = Depends(get_us
 @can_read
 @router.get('/{dataset}/neurons/head_tag', response_model=str)
 @router.get('/{dataset}/neurons/head_tag/', response_model=str, include_in_schema=False)
-def get_head_tag(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_head_tag(dataset: str, user: User = Depends(get_user)):
     """ Returns the head version tag for the given scope.
         
     Returns:
@@ -161,7 +155,7 @@ def get_head_tag(dataset: str, annotation_type: str, user: User = Depends(get_us
 @can_read
 @router.get('/{dataset}/neurons/head_uuid', response_model=str)
 @router.get('/{dataset}/neurons/head_uuid/', response_model=str, include_in_schema=False)
-def get_head_uuid(dataset: str, annotation_type: str, user: User = Depends(get_user)):
+def get_head_uuid(dataset: str, user: User = Depends(get_user)):
     """ Returns the head version uuid for the given scope.
         
     Returns:
@@ -184,7 +178,7 @@ def get_head_uuid(dataset: str, annotation_type: str, user: User = Depends(get_u
 @can_read
 @router.get('/{dataset}/neurons/tag_to_uuid/{tag}', response_model=str)
 @router.get('/{dataset}/neurons/tag_to_uuid/{tag}/', response_model=str, include_in_schema=False)
-def get_tag_to_uuid(dataset: str, annotation_type: str, tag: str, user: User = Depends(get_user)):
+def get_tag_to_uuid(dataset: str, tag: str, user: User = Depends(get_user)):
     """ Returns the corresponding dvid UUID of the given tag for the given scope.
         
     Returns:
@@ -212,7 +206,7 @@ def get_tag_to_uuid(dataset: str, annotation_type: str, tag: str, user: User = D
 @can_read
 @router.get('/{dataset}/neurons/uuid_to_tag/{uuid}', response_model=str)
 @router.get('/{dataset}/neurons/uuid_to_tag/{uuid}/', response_model=str, include_in_schema=False)
-def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = Depends(get_user)):
+def get_uuid_to_tag(dataset: str, uuid: str, user: User = Depends(get_user)):
     """ Returns the corresponding string tag for the given dvid UUID for the given scope.
         
     Returns:
@@ -253,7 +247,7 @@ def get_uuid_to_tag(dataset: str, annotation_type: str, uuid: str, user: User = 
 @can_read
 @router.get('/{dataset}/neurons/all')
 @router.get('/{dataset}/neurons/all/', include_in_schema=False)
-def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None, 
+def get_all_annotations(dataset: str, cursor: str = None, 
                         size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
     """ Returns all current neuron annotations for the given dataset and annotation type.
 
@@ -268,10 +262,14 @@ def get_all_annotations(dataset: str, annotation_type: str, cursor: str = None,
         A JSON list of the annotations.
 
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    base_url = dvid_base_url(dataset, "")
+    url = f"{base_url}/segmentation_annotations/all"
+
+    responseBytes = dvid_request(url) 
+    return Response(content=responseBytes, media_type="application/json")
 
 
-def get_dvid_annotations(dataset: str, version: str, ids: List[int]):
+def get_dvid_annotations(dataset: str, version: str, ids: List[int]) -> bytes:
     """ Returns all current neuron annotations for the given dataset at the Clio version
         
     Returns:
@@ -279,33 +277,12 @@ def get_dvid_annotations(dataset: str, version: str, ids: List[int]):
         A JSON list of the annotations.
     """
     base_url = dvid_base_url(dataset, version)
-    url = f"{base_url}/segmentation_annotations/keyvalues"
+    url = f"{base_url}/segmentation_annotations/keyvalues?json=true"
 
-    # Create payload of protobuf encoded ids
-    keys = kv_pb2.Keys()
-    for id in ids:
-        keys.keys.append(str(id))
-    content = dvid_request(url, keys.SerializeToString())
-
-    # Decipher the returned protobuf
-    keyvalues = kv_pb2.KeyValues()
-    keyvalues.ParseFromString(content)
-
-    try:
-        # annotations = {}
-        # for kv in keyvalues.kvs:
-        #     annotations[kv.key] = json.loads(kv.value) if kv.value else None
-        json_out = "["
-        for kv in keyvalues.kvs:
-            json_out += f'{kv.value.decode() if kv.value else "{}"},'
-        json_out = json_out[:-1] + "]"
+    jsonList = json.dumps(ids)
+    responseBytes = dvid_request(url, jsonList)
         
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Unable to decode id {str(kv.key)} as JSON: {str(kv.value)}"
-        )
-    return Response(content=json_out, media_type="application/json")
+    return Response(content=responseBytes, media_type="application/json")
 
 @can_read
 @router.get('/{dataset}/neurons/id-number/{id}', response_model=Union[List, dict])
@@ -326,6 +303,7 @@ def get_annotations(dataset: str, id: str, version: str = "", user: User = Depen
         ids = [int(id_str) for id_str in id_strs]
     else:
         ids = [int(id)]
+    print(ids)
     
     return get_dvid_annotations(dataset, version, ids)
 
@@ -339,34 +317,23 @@ def delete_annotations(dataset: str, id: str, user: User = Depends(get_user)):
     raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
 
 
-def merge_annotations(merged: list, current: list, id_field: str):
-    """Merge list of annotations (dict) such that in the list, the id_field field is unique."""
-    if len(current) == 0:
-        return
-    past_ids = set()
-    for annotation in merged:
-        if id_field in annotation:
-            past_ids.add(annotation[id_field])
-    for annotation in current:
-        if id_field in annotation and annotation[id_field] not in past_ids:
-            merged.append(annotation)
-
-
 @can_read
 @router.post('/{dataset}/neurons/query', response_model=List)
 @router.post('/{dataset}/neurons/query/', response_model=List, include_in_schema=False)
-def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict], Dict], version: str = "",
-                    onlyid: bool = False, user: User = Depends(get_user)):
+def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str = "",
+                    user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
     The JSON query format uses field names as the keys, and desired values.
     Example:
-    { "bodyid": 23, "hemilineage": "0B", ... }
+    { "bodyid": [23, 101], "hemilineage": "0B", ... }
     Each field value must be true, i.e., the conditions or ANDed together.
+    If the field value is a list, selected annotations must be a value in the list.
+    For example, annotations with "bodyid" of 23 or 101 are selected in example above.
 
     If a list of queries (JSON object per query) is POSTed, the results for each query are ORed
     together with duplicate annotations removed.
-        
+
     Query strings:
 
         version (str): If supplied, annotations are for the given dataset version.
@@ -377,14 +344,21 @@ def get_annotations(dataset: str, annotation_type: str, query: Union[List[Dict],
 
         A JSON list of objects.
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    base_url = dvid_base_url(dataset, version)
+    url = f"{base_url}/segmentation_annotations/query"
+
+    r = requests.post(url, json = query)
+    if r.status_code != 200:
+        raise HTTPException(status_code=r.status_code, detail=r.content)
+        
+    return Response(content=r.content, media_type="application/json")
 
 
 @router.put('/{dataset}/neurons')
 @router.post('/{dataset}/neurons')
 @router.put('/{dataset}/neurons/', include_in_schema=False)
 @router.post('/{dataset}/neurons/', include_in_schema=False)
-def post_annotations(dataset: str, annotation_type: str, payload: Union[List[Dict], Dict], 
+def post_annotations(dataset: str, payload: Union[List[Dict], Dict], 
                      replace: bool = False, conditional: str = "", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.

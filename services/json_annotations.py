@@ -304,8 +304,17 @@ def get_annotations(dataset: str, id: str, version: str = "", user: User = Depen
     else:
         ids = [int(id)]
     print(ids)
-    
-    return get_dvid_annotations(dataset, version, ids)
+
+    base_url = dvid_base_url(dataset, version)
+    url = f"{base_url}/segmentation_annotations/keyvalues?json=true"
+
+    jsonList = json.dumps(ids)
+    annotationDict = dvid_request_json(url, jsonList)
+
+    annotations = list(annotationDict.values())
+    if len(annotations) == 1:
+        return annotations[0]
+    return annotations
 
 
 @router.delete('/{dataset}/neurons/id-number/{id}')

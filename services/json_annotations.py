@@ -28,7 +28,7 @@ MAX_ANNOTATIONS_RETURNED = 1000000
 
 set_fields = set(['tags'])
 
-def dvid_base_url(dataset: str, version: str) -> str:
+def dvid_base_url(dataset: str, version: str = "") -> str:
     """Return the DVID base URL (e.g., https://dvid.org/api/node/uuid) """
 
     # Convert to DVID UUID unless this doesn't have a 'v' prefix
@@ -75,7 +75,6 @@ def dvid_request_json(url: str, payload=None):
     annot_json_str = str(content.decode()) 
     return json.loads(annot_json_str)
 
-
 def can_read(func):
     def wrapper(self, *args, **kwargs):
         dataset = args[0]
@@ -84,6 +83,19 @@ def can_read(func):
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, 
                 detail=f"no permission to read annotations on dataset {dataset}"
+            )
+        return func(self, *args, **kwargs)
+    return wrapper
+
+
+def can_write(func):
+    def wrapper(self, *args, **kwargs):
+        dataset = args[0]
+        user = kwargs['user']
+        if not user.can_write_others(dataset):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED, 
+                detail=f"no permission to write annotations on dataset {dataset}"
             )
         return func(self, *args, **kwargs)
     return wrapper
@@ -316,14 +328,23 @@ def get_annotations(dataset: str, id: str, version: str = "", user: User = Depen
         return annotations[0]
     return annotations
 
-
+@can_write
 @router.delete('/{dataset}/neurons/id-number/{id}')
 @router.delete('/{dataset}/neurons/id-number/{id}/', include_in_schema=False)
 def delete_annotations(dataset: str, id: str, user: User = Depends(get_user)):
     """ Deletes the neuron annotation associated with the given id (requires permission).
         
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    base_url = dvid_base_url(dataset)
+    url = f"{base_url}/segmentation_annotations/key/{id}"
+
+    r = requests.delete(url)
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code, 
+            detail=f"Error in delete bodyid {id}, status {r.status_code}, {url}: {r.content}"
+        )
+    return r.content
 
 
 @can_read
@@ -363,6 +384,30 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     return Response(content=r.content, media_type="application/json")
 
 
+def write_annotation(base_url, payload, conditional, replace):
+    if "bodyid" not in payload:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, 
+            detail=f"Cannot POST annotation when no bodyid field exists in JSON"
+        )
+    url = f'{base_url}/segmentation_annotations/key/{payload["bodyid"]}'
+    if conditional != "" or replace:
+        querystr = []
+        if conditional != "":
+            querystr.append('conditional=' + conditional)
+        if replace:
+            querystr.append('replace=true')
+        url += '?' + ','.join(querystr)
+        
+    r = requests.post(url, payload)
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code, 
+            detail=f"Error in writing bodyid {id}, status {r.status_code}, {url}: {r.content}"
+        )
+    return r.content
+
+@can_write
 @router.put('/{dataset}/neurons')
 @router.post('/{dataset}/neurons')
 @router.put('/{dataset}/neurons/', include_in_schema=False)
@@ -382,4 +427,12 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict],
 
         version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
     """
-    raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED)
+    base_url = dvid_base_url(dataset, version)
+
+    if isinstance(payload, dict):
+        r = write_annotation(base_url, payload, conditional, replace)
+    else: # must be list
+        for annotation in payload:
+            r = write_annotation(base_url, annotation, conditional, replace)
+
+    return r.content

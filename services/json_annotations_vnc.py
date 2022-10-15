@@ -220,6 +220,7 @@ def update_in_transaction(transaction, head_ref, archived_ref, data: dict, condi
     # if there are conditional fields that already exist, delete them.
     for field in conditional_fields:
         if field in data and field in orig_data and bool(orig_data[field]):
+            print(f"field ({field}): update ({data[field]}) surpressed since field set ({orig_data[field]})")
             del data[field]
 
     if orig_data['_version'] <= version_int:

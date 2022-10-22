@@ -259,8 +259,8 @@ def get_uuid_to_tag(dataset: str, uuid: str, user: User = Depends(get_user)):
 @can_read
 @router.get('/{dataset}/neurons/all')
 @router.get('/{dataset}/neurons/all/', include_in_schema=False)
-def get_all_annotations(dataset: str, cursor: str = None, 
-                        size: int = MAX_ANNOTATIONS_RETURNED, user: User = Depends(get_user)):
+def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, 
+                        show: str = None, user: User = Depends(get_user)):
     """ Returns all current neuron annotations for the given dataset and annotation type.
 
     Query strings:
@@ -269,6 +269,11 @@ def get_all_annotations(dataset: str, cursor: str = None,
 
         size (int): If supplied, at most this many annotations are returned.
         
+	    show (str):	If "user", shows *_user fields.
+				    If "time", shows *_time fields.
+				    If "all", shows both *_user and *_time fields.
+				    If unset (default), shows neither *_user or *_time fields.
+
     Returns:
 
         A JSON list of the annotations.
@@ -276,6 +281,13 @@ def get_all_annotations(dataset: str, cursor: str = None,
     """
     base_url = dvid_base_url(dataset, "")
     url = f"{base_url}/segmentation_annotations/all"
+    query_strings = []
+    if show:
+        query_strings.append(f"show={show}")
+    if cursor:
+        query_strings.append(f"cursor={cursor}&size={size}")
+    if len(query_strings) > 0:
+        url = url + "?" + "&".join(query_strings)
 
     responseBytes = dvid_request(url) 
     return Response(content=responseBytes, media_type="application/json")
@@ -296,15 +308,21 @@ def get_dvid_annotations(dataset: str, version: str, ids: List[int]) -> bytes:
         
     return Response(content=responseBytes, media_type="application/json")
 
+
 @can_read
 @router.get('/{dataset}/neurons/id-number/{id}', response_model=Union[List, dict])
 @router.get('/{dataset}/neurons/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
-def get_annotations(dataset: str, id: str, version: str = "", user: User = Depends(get_user)):
+def get_annotations(dataset: str, id: str, version: str = "", show: str = None, user: User = Depends(get_user)):
     """ Returns the neuron annotation associated with the given id.
         
     Query strings:
 
         version (str): If supplied, annotations are for the given dataset version (in clio format)
+
+	    show (str):	If "user", shows *_user fields.
+				    If "time", shows *_time fields.
+				    If "all", shows both *_user and *_time fields.
+				    If unset (default), shows neither *_user or *_time fields.
 
     Returns:
 
@@ -319,6 +337,8 @@ def get_annotations(dataset: str, id: str, version: str = "", user: User = Depen
 
     base_url = dvid_base_url(dataset, version)
     url = f"{base_url}/segmentation_annotations/keyvalues?json=true"
+    if show:
+        url += f"&show={show}"
 
     jsonList = json.dumps(ids)
     annotationDict = dvid_request_json(url, jsonList)
@@ -344,14 +364,12 @@ def delete_annotations(dataset: str, id: str, user: User = Depends(get_user)):
             status_code=r.status_code, 
             detail=f"Error in delete bodyid {id}, status {r.status_code}, {url}: {r.content}"
         )
-    return r.content
-
 
 @can_read
 @router.post('/{dataset}/neurons/query', response_model=List)
 @router.post('/{dataset}/neurons/query/', response_model=List, include_in_schema=False)
 def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str = "",
-                    user: User = Depends(get_user)):
+                    show: str = "", user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
     The JSON query format uses field names as the keys, and desired values.
@@ -368,6 +386,11 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
 
         version (str): If supplied, annotations are for the given dataset version.
 
+	    show (str):	If "user", shows *_user fields.
+				    If "time", shows *_time fields.
+				    If "all", shows both *_user and *_time fields.
+				    If unset (default), shows neither *_user or *_time fields.
+
         onlyid (bool): If true (false by default), will only return a list of id field values that match.
 
     Returns:
@@ -376,6 +399,8 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     """
     base_url = dvid_base_url(dataset, version)
     url = f"{base_url}/segmentation_annotations/query"
+    if show:
+        url += f"?show={show}"
 
     r = requests.post(url, json = query)
     if r.status_code != 200:
@@ -399,21 +424,20 @@ def write_annotation(base_url, payload, conditional, replace):
             querystr.append('replace=true')
         url += '?' + ','.join(querystr)
         
-    r = requests.post(url, payload)
+    r = requests.post(url, json=payload)
     if r.status_code != 200:
         raise HTTPException(
             status_code=r.status_code, 
             detail=f"Error in writing bodyid {id}, status {r.status_code}, {url}: {r.content}"
         )
-    return r.content
 
 @can_write
 @router.put('/{dataset}/neurons')
 @router.post('/{dataset}/neurons')
 @router.put('/{dataset}/neurons/', include_in_schema=False)
 @router.post('/{dataset}/neurons/', include_in_schema=False)
-def post_annotations(dataset: str, payload: Union[List[Dict], Dict], 
-                     replace: bool = False, conditional: str = "", version: str = "", user: User = Depends(get_user)):
+def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bool = False,
+                     conditional: str = "", version: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
 
@@ -430,9 +454,7 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict],
     base_url = dvid_base_url(dataset, version)
 
     if isinstance(payload, dict):
-        r = write_annotation(base_url, payload, conditional, replace)
+        write_annotation(base_url, payload, conditional, replace)
     else: # must be list
         for annotation in payload:
-            r = write_annotation(base_url, annotation, conditional, replace)
-
-    return r.content
+            write_annotation(base_url, annotation, conditional, replace)

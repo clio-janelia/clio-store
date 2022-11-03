@@ -422,7 +422,7 @@ def write_annotation(base_url, payload, user, conditional, replace):
             querystr.append('replace=true')
     if user.email is not None and user.email != "":
         querystr.append(f'u={user.email}')
-    url += '?' + ','.join(querystr)
+    url += '?' + '&'.join(querystr)
         
     r = requests.post(url, json=payload)
     if r.status_code != 200:

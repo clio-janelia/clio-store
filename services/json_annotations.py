@@ -406,20 +406,23 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     return Response(content=r.content, media_type="application/json")
 
 
-def write_annotation(base_url, payload, conditional, replace):
+def write_annotation(base_url, payload, user, conditional, replace):
     if "bodyid" not in payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
             detail=f"Cannot POST annotation when no bodyid field exists in JSON"
         )
+    print(f'User in annotation write: {user.email}')
     url = f'{base_url}/segmentation_annotations/key/{payload["bodyid"]}'
+    querystr = []
     if conditional != "" or replace:
-        querystr = []
         if conditional != "":
             querystr.append('conditional=' + conditional)
         if replace:
             querystr.append('replace=true')
-        url += '?' + ','.join(querystr)
+    if user.email is not None and user.email != "":
+        querystr.append(f'u={user.email}')
+    url += '?' + ','.join(querystr)
         
     r = requests.post(url, json=payload)
     if r.status_code != 200:
@@ -451,7 +454,7 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bo
     base_url = dvid_base_url(dataset, version)
 
     if isinstance(payload, dict):
-        write_annotation(base_url, payload, conditional, replace)
+        write_annotation(base_url, payload, user, conditional, replace)
     else: # must be list
         for annotation in payload:
-            write_annotation(base_url, annotation, conditional, replace)
+            write_annotation(base_url, annotation, user, conditional, replace)

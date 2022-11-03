@@ -310,10 +310,10 @@ def get_dvid_annotations(dataset: str, version: str, ids: List[int]) -> bytes:
 
 
 @can_read
-@router.get('/{dataset}/neurons/id-number/{id}', response_model=Union[List, dict])
-@router.get('/{dataset}/neurons/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
+@router.get('/{dataset}/neurons/id-number/{id}', response_model=List)
+@router.get('/{dataset}/neurons/id-number/{id}/', response_model=List, include_in_schema=False)
 def get_annotations(dataset: str, id: str, version: str = "", show: str = None, user: User = Depends(get_user)):
-    """ Returns the neuron annotation associated with the given id.
+    """ Returns the neuron annotations associated with the given id list separated by commas.
         
     Query strings:
 
@@ -326,7 +326,7 @@ def get_annotations(dataset: str, id: str, version: str = "", show: str = None, 
 
     Returns:
 
-        A JSON list (if changes requested or multiple ids given) or JSON object if not.
+        A JSON list of annotations.
     """
     if "," in id:
         id_strs = id.split(",")
@@ -343,10 +343,7 @@ def get_annotations(dataset: str, id: str, version: str = "", show: str = None, 
     jsonList = json.dumps(ids)
     annotationDict = dvid_request_json(url, jsonList)
 
-    annotations = list(annotationDict.values())
-    if len(annotations) == 1:
-        return annotations[0]
-    return annotations
+    return list(annotationDict.values())
 
 @can_write
 @router.delete('/{dataset}/neurons/id-number/{id}')

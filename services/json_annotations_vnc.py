@@ -450,10 +450,10 @@ def get_all_annotations(annotation_type: str, cursor: str = None, size: int = MA
     return output
 
     
-@router.get('/{annotation_type}/id-number/{id}', response_model=Union[List, dict])
-@router.get('/{annotation_type}/id-number/{id}/', response_model=Union[List, dict], include_in_schema=False)
+@router.get('/{annotation_type}/id-number/{id}', response_model=List)
+@router.get('/{annotation_type}/id-number/{id}/', response_model=List, include_in_schema=False)
 def get_annotations(annotation_type: str, id: str, version: str = "", changes: bool = False, id_field: str = "bodyid", user: User = Depends(get_user)):
-    """ Returns the neuron annotation associated with the given id.
+    """ Returns the neuron annotations associated with the given id list separated by commas.
         
     Query strings:
 
@@ -465,7 +465,7 @@ def get_annotations(annotation_type: str, id: str, version: str = "", changes: b
 
     Returns:
 
-        A JSON list (if changes requested or multiple ids given) or JSON object if not.
+        A JSON list of annotations.
     """
     if not user.can_read(dataset):
         raise HTTPException(status_code=401, detail=f"no permission to read annotations on dataset {dataset}")

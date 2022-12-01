@@ -19,8 +19,6 @@ from dependencies import get_dataset, get_user, User, version_str_to_int
 from stores import firestore, cache
 from google.cloud import firestore as google_firestore
 
-import kv_pb2
-
 router = APIRouter()
 
 ALLOWED_QUERY_OPS = set(['<', '<=', '==', '>', '>=', '!=', 'array_contains', 'array_contains_any', 'in', 'not_in'])
@@ -401,7 +399,7 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
 
     r = requests.post(url, json = query)
     if r.status_code != 200:
-        raise HTTPException(status_code=r.status_code, detail=r.content)
+        raise HTTPException(status_code=r.status_code, detail=r.content) # make more robust depending on return
         
     return Response(content=r.content, media_type="application/json")
 

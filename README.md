@@ -10,12 +10,12 @@ is built into the system, allowing selective read/write/metadata access to datas
 
 Setup Local Python Environment:
 
-Requires [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html) 
-or [mamba](https://mamba.readthedocs.io/en/latest/installation.html) to be installed.
+We suggest creating a virual environment using [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html), [mamba](https://mamba.readthedocs.io/en/latest/installation.html), or pyenv, and installing python
+within that environment.
 
+Then:
 ```
-conda create -f environment.yml
-conda activate clio-store
+pip install -r requirements.txt
 ```
 
 ### Run the server locally:

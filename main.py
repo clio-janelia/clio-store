@@ -22,7 +22,7 @@ app.include_router(users.router, prefix=f"{URL_PREFIX}/test/users", dependencies
 app.include_router(roles.router, prefix=f"{URL_PREFIX}/test/roles", dependencies=[Depends(get_user)], include_in_schema=False)
 app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/test/pull-request", dependencies=[Depends(get_user)], include_in_schema=False)
 
-app.include_router(json_annotations_vnc.router, prefix=f"{URL_PREFIX}/v2/json-annotations/VNC", dependencies=[Depends(get_user)])
+#app.include_router(json_annotations_vnc.router, prefix=f"{URL_PREFIX}/v2/json-annotations/VNC", dependencies=[Depends(get_user)])
 app.include_router(json_annotations.router, prefix=f"{URL_PREFIX}/v2/json-annotations", dependencies=[Depends(get_user)])
 
 app.include_router(annotations_v3.router, prefix=f"{URL_PREFIX}/v2/annotations", dependencies=[Depends(get_user)])

@@ -450,6 +450,7 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bo
         version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
     """
     base_url = dvid_base_url(dataset, version)
+    print("base_url: {base_url}")
 
     if isinstance(payload, dict):
         write_annotation(base_url, payload, user, conditional, replace)

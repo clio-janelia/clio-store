@@ -40,18 +40,17 @@ def dvid_base_url(dataset: str, version: str = "") -> str:
             version = tag_to_uuid[version]
 
     # Default to DVID server HEAD if no version indicated
+    dataset_cache = get_dataset(dataset)
     if len(version) == 0:
-        dataset_cache = get_dataset(dataset)
         version = dataset_cache.uuid
 
     # Construct the base url based on the dvid server for the dataset
-    cur_dataset = get_dataset(dataset)
-    if cur_dataset.dvid is None:
+    if dataset_cache.dvid is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"DVID server for dataset {dataset} not found"
         )
-    return f"{cur_dataset.dvid}/api/node/{version}"
+    return f"{dataset_cache.dvid}/api/node/{version}"
 
 
 def dvid_request(url: str, payload=None):

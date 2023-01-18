@@ -38,6 +38,11 @@ async def get_token(user: User = Depends(get_user)):
         'exp': exp_time,
         'iss': 'flyem-clio-store'
     }
+    # don't use update since not sure what the mapping token return constitutes
+    if user.google_idinfo:
+        for key, value in user.google_idinfo.items():
+            if key not in flyem_jwt:
+                flyem_jwt[key] = value
     try:
         token = jwt.encode(flyem_jwt, FLYEM_SECRET, algorithm='HS256')
     except:

@@ -11,7 +11,7 @@ from google.oauth2 import id_token
 from google.auth import exceptions
 
 from pydantic import BaseModel
-from pydantic.typing import List, Set, Dict, Any, Optional
+from pydantic.typing import List, Set, Dict, Any, Mapping, Optional
 
 from config import *
 from stores import firestore
@@ -154,14 +154,21 @@ def get_dataset(dataset_id: str) -> Dataset:
     return datasets.get_dataset(dataset_id)
 
 class User(BaseModel):
-    email: str
+    email: str  # Used for Google authentication
+
+    # Possible additions to user fields:
+    #
+    # userid: str # Janelia userid if available (None for external users)
     # email_verified: bool = False
+
     name: Optional[str]  # full name
     org: Optional[str]   # affiliated organization
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
     groups: Optional[Set[str]] = set()
+
+    google_idinfo: Optional[Mapping[str, Any]] = None
 
     def has_role(self, role: str, dataset: str = "") -> bool:
         if role in self.global_roles:
@@ -249,7 +256,7 @@ class UserCache(BaseModel):
         print(f"Cached {len(self.cache)} user metadata and {len(self.memberships)} groups in {time.time() - t0} secs.")
         return users
 
-    def get_user(self, email: str) -> User:
+    def get_user(self, email: str, google_idinfo: Mapping[str, Any] = None) -> User:
         user = self.cache.get(email)
         if user is not None:
             age = time.time() - self.user_updated.get(email, 0)
@@ -263,6 +270,8 @@ class UserCache(BaseModel):
                 user = self.refresh_user(user_ref)
             else:
                 user = User(email=email)
+        if google_idinfo and user is not None:
+            user.google_idinfo = google_idinfo
         return user
 
     def group_members(self, user: User, groups: Set[str]) -> Set[str]:
@@ -298,6 +307,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
     """Check token (either FlyEM or Google identity) and return user roles and data."""
     email = None
+    idinfo = None # Google ID token if supplied
 
     # Check if token is a "FlyEM token"
     if FLYEM_SECRET:
@@ -329,7 +339,7 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
             else:
                 raise credentials_exception
 
-    user = users.get_user(email)
+    user = users.get_user(email, idinfo)
     if user is None:
         print(f"Valid token for user {email} but not associated with a valid user from Clio Firestore")
         raise credentials_exception

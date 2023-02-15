@@ -37,6 +37,11 @@ def dvid_base_url(dataset: str, version: str = "") -> str:
             path=['neurons', dataset, 'tag_to_uuid']
         )
         if tag_to_uuid:
+            if version not in tag_to_uuid:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Bad version {version} used for dataset {dataset}"
+                )
             version = tag_to_uuid[version]
 
     # Default to DVID server HEAD if no version indicated

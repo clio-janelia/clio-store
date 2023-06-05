@@ -61,6 +61,7 @@ def fetch_signature(dataset, x, y, z):
     global SIG_CACHE
     storage_client = storage.Client()
     bucket = storage_client.bucket(SIG_BUCKET)
+    dataset = dataset.lower()
 
     # fetch metaadata
     meta = None
@@ -132,6 +133,7 @@ def murmur64(h):
 # find the closest signatures by hamming distance
 def find_similar_signatures(dataset, x, y, z):
     # don't catch error if there is one
+    dataset = dataset.lower()
     point, signature = fetch_signature(dataset, x, y, z)
     meta = SIG_CACHE[dataset]
     PARTITIONS = 4000

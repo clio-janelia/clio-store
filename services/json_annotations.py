@@ -59,7 +59,7 @@ def dvid_base_url(dataset: str, version: str = "") -> str:
 
 
 def dvid_request(url: str, payload=None):
-    print(f"Performing GET {url} with payload of {len(payload) if payload else 'no'} bytes")
+    print(f"Performing dvid GET {url} with payload of {len(payload) if payload else 'no'} bytes")
     if payload:
         r = requests.get(url, data=payload)
     else:
@@ -71,10 +71,24 @@ def dvid_request(url: str, payload=None):
         )
     return r.content
 
+async def dvid_streaming_request(url: str, payload=None):
+    print(f"Performing dvid streaming GET {url} with payload of {len(payload) if payload else 'no'} bytes")
+    if payload:
+        r = requests.get(url, data=payload)
+    else:
+        r = requests.get(url)
+    if r.status_code != 200:
+        raise HTTPException(
+            status_code=r.status_code, 
+            detail=f"Error in dvid request, status {r.status_code}, {url}: {r.content}"
+        )
+    yield r.content
+
 
 def dvid_request_json(url: str, payload=None):
     content = dvid_request(url, payload)
     annot_json_str = str(content.decode()) 
+    print(f"returned JSON: {annot_json_str}")
     return json.loads(annot_json_str)
 
 def can_read(func):
@@ -267,15 +281,15 @@ def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTA
 
     Query strings:
 
-        cursor (str): If supplied, annotations after the given id are sent.
-
-        size (int): If supplied, at most this many annotations are returned.
-        
 	    show (str):	If "user", shows *_user fields.
 				    If "time", shows *_time fields.
 				    If "all", shows both *_user and *_time fields.
 				    If unset (default), shows neither *_user or *_time fields.
 
+        Temporarily unavailable parameters:
+            cursor (str): If supplied, annotations after the given id are sent.
+            size (int): If supplied, at most this many annotations are returned.
+        
     Returns:
 
         A JSON list of the annotations.
@@ -291,8 +305,7 @@ def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTA
     if len(query_strings) > 0:
         url = url + "?" + "&".join(query_strings)
 
-    responseBytes = dvid_request(url) 
-    return Response(content=responseBytes, media_type="application/json")
+    return StreamingResponse(dvid_streaming_request(url), media_type="application/json")
 
 
 def get_dvid_annotations(dataset: str, version: str, ids: List[int]) -> bytes:

@@ -421,7 +421,7 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     return Response(content=r.content, media_type="application/json")
 
 
-def write_annotation(base_url, payload, user, conditional, replace):
+def write_annotation(base_url, payload, user, designated_user, conditional, replace):
     if "bodyid" not in payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -435,7 +435,9 @@ def write_annotation(base_url, payload, user, conditional, replace):
             querystr.append('conditional=' + conditional)
         if replace:
             querystr.append('replace=true')
-    if user.email is not None and user.email != "":
+    if designated_user is not None and designated_user != "":
+        querystr.append(f'u={designated_user}')
+    elif user.email is not None and user.email != "":
         querystr.append(f'u={user.email}')
     url += '?' + '&'.join(querystr)
         
@@ -452,7 +454,8 @@ def write_annotation(base_url, payload, user, conditional, replace):
 @router.put('/{dataset}/neurons/', include_in_schema=False)
 @router.post('/{dataset}/neurons/', include_in_schema=False)
 def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bool = False,
-                     conditional: str = "", version: str = "", user: User = Depends(get_user)):
+                     conditional: str = "", version: str = "", designated_user: str = "",
+                     user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
 
@@ -465,12 +468,15 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bo
             if the field is currently non-existant or empty.
 
         version (str): The clio tag string corresponding to a version, e.g., "v0.3.1"
+
+        designated_user (str): If supplied, the user field is set to this value instead of the 
+            authenticated user.
     """
     base_url = dvid_base_url(dataset, version)
     print("base_url: {base_url}")
 
     if isinstance(payload, dict):
-        write_annotation(base_url, payload, user, conditional, replace)
+        write_annotation(base_url, payload, user, designated_user, conditional, replace)
     else: # must be list
         for annotation in payload:
-            write_annotation(base_url, annotation, user, conditional, replace)
+            write_annotation(base_url, annotation, user, designated_user, conditional, replace)

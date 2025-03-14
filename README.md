@@ -43,8 +43,8 @@ gcloud artifacts repositories create clio-store \
 gcloud run deploy clio-store \
   --source . \
   --region us-east4 \
-  --allow-unauthenticated
-  --http2
+  --allow-unauthenticated \
+  --use-http2
 ```
 
 Note that we explicitly configure the Cloud Run service to use HTTP/2 which removes

@@ -381,7 +381,7 @@ def delete_annotations(dataset: str, id: str, user: User = Depends(get_user)):
 @router.post('/{dataset}/neurons/query', response_model=List)
 @router.post('/{dataset}/neurons/query/', response_model=List, include_in_schema=False)
 def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str = "",
-                    show: str = "", user: User = Depends(get_user)):
+                    show: str = "", onlyid: bool = False, user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
     The JSON query format uses field names as the keys, and desired values.
@@ -411,8 +411,14 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     """
     base_url = dvid_base_url(dataset, version)
     url = f"{base_url}/segmentation_annotations/query"
-    if show:
-        url += f"?show={show}"
+
+    querystr = []
+    if show != "":
+        querystr.append('show=' + show)
+    if onlyid:
+        querystr.append('onlyid=true')
+    if len(querystr) > 0:
+        url += '?' + '&'.join(querystr)
 
     r = requests.post(url, json = query)
     if r.status_code != 200:

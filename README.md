@@ -22,17 +22,35 @@ pip install -r requirements.txt
 ```
 uvicorn main:app --reload
 ```
+or if you want to run HTTP/2:
+```
+hypercorn main:app --bind 0.0.0.0:8000 --reload
+```
 
 Then check it out: http://localhost:8000/
 
 ### Run on Cloud Run:
 
 ```
-gcloud builds submit --tag gcr.io/[PROJECT_ID]/clio-store
-gcloud run deploy --image gcr.io/[PROJECT_ID]/clio-store --platform managed
+# Creating Artifact Registry in us-east4 (one time)
+gcloud artifacts repositories create clio-store \
+  --repository-format=docker \
+  --location=us-east4 \
+  --project={project-id} \
+  --description="Store for Clio application"
+
+# Then when building and deploying
+gcloud run deploy clio-store \
+  --source . \
+  --region us-east4 \
+  --allow-unauthenticated
+  --http2
 ```
 
-The first `gcloud builds` command will build the docker image and push it to the Google Container Registry. The second `gcloud run` command will deploy the image to Cloud Run. The `--platform managed` flag is required to deploy to Cloud Run on Google Cloud.
+Note that we explicitly configure the Cloud Run service to use HTTP/2 which removes
+limitations in response sizes (only 32 MiB for HTTP/1). Deployed containers will
+use hypercorn because of the need for HTTP/2 to avoid Google's limit on response
+sizes. 
 
 ## Environment variables 
 

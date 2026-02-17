@@ -15,6 +15,9 @@ TEST_USER = os.environ.get("TEST_USER", None)
 # if FLYEM_SECRET env var is set, this server can issue FlyEM tokens.
 FLYEM_SECRET = os.environ.get("FLYEM_SECRET", None)
 
+# if DSG_URL is set, auth is handled by DatasetGate instead of Firestore.
+DSG_URL = os.environ.get("DSG_URL", None)
+
 # TODO -- should really be in adapters to store
 
 # firestore user collection name

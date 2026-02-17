@@ -10,9 +10,20 @@ from stores import firestore
 
 router = APIRouter()
 
+
+def _check_dsg_redirect():
+    """Raise 501 if user management has moved to DatasetGate."""
+    if DSG_URL:
+        raise HTTPException(
+            status_code=501,
+            detail=f"User management has moved to DatasetGate ({DSG_URL})",
+        )
+
+
 @router.get('')
 @router.get('/', include_in_schema=False)
 def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
+    _check_dsg_redirect()
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:
@@ -24,10 +35,11 @@ def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
 class UserPayload(BaseModel):
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
-  
+
 @router.post('')
 @router.post('/', include_in_schema=False)
 def post_users(postdata: Dict[str, UserPayload], user: User = Depends(get_user)):
+    _check_dsg_redirect()
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:
@@ -45,6 +57,7 @@ def post_users(postdata: Dict[str, UserPayload], user: User = Depends(get_user))
 @router.delete('')
 @router.delete('/', include_in_schema=False)
 def delete_users(deleted_emails: List, user: User = Depends(get_user)):
+    _check_dsg_redirect()
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
     try:

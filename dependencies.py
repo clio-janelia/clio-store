@@ -16,6 +16,7 @@ from pydantic.typing import List, Set, Dict, Any, Mapping, Optional
 from config import *
 from stores import firestore
 
+import httpx
 import jwt
 
 # stores reference to global APP
@@ -289,27 +290,112 @@ class UserCache(BaseModel):
                 members.update(self.memberships[group])
         return members
 
-users = UserCache(collection = firestore.get_collection([CLIO_USERS]))
-users.refresh_cache()
+# --- Conditional UserCache initialization ---
+# When DSG_URL is set, auth goes through DatasetGate; no Firestore clio_users needed.
+if DSG_URL:
+    users = None
+    print(f"DatasetGate auth enabled: {DSG_URL}")
+else:
+    users = UserCache(collection=firestore.get_collection([CLIO_USERS]))
+    users.refresh_cache()
 
-def group_members(user: User, groups: Set[str]) -> Set[str]:
-    """
-    Return set of email addresses of members who are within the given groups
-    of the given user.  Only groups to which the user belongs are added to
-    the returned set.
-    """
-    return users.group_members(user, groups)
+# --- DatasetGate-backed caches ---
 
-# handle OAuth2
+# token -> (timestamp, User)
+_dsg_user_cache = {}
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+# group_name -> (timestamp, set of emails)
+_dsg_group_members_cache = {}
 
-def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
-    """Check token (either FlyEM or Google identity) and return user roles and data."""
+
+def _resolve_token(request: Request, token: str) -> str:
+    """Extract auth token from Bearer header, dsg_token cookie, or query param."""
+    if token:
+        return token
+    cookie_token = request.cookies.get("dsg_token")
+    if cookie_token:
+        return cookie_token
+    query_token = request.query_params.get("dsg_token")
+    if query_token:
+        return query_token
+    return None
+
+
+def _map_dsg_to_user(dsg_data: dict) -> User:
+    """Map DatasetGate /api/v1/user/cache response to clio-store User model."""
+    global_roles = set()
+    ds_roles = {}
+
+    if dsg_data.get("admin"):
+        global_roles.add("admin")
+
+    for ds_name, perms in dsg_data.get("permissions_v2", {}).items():
+        roles = set()
+        if "view" in perms:
+            roles.add("clio_general")
+        if "edit" in perms:
+            roles.add("clio_write")
+        if roles:
+            ds_roles[ds_name] = roles
+
+    for ds_name in dsg_data.get("datasets_admin", []):
+        ds_roles.setdefault(ds_name, set()).add("dataset_admin")
+
+    return User(
+        email=dsg_data["email"],
+        name=dsg_data.get("name", ""),
+        global_roles=global_roles,
+        datasets=ds_roles,
+        groups=set(dsg_data.get("groups", [])),
+    )
+
+
+def _get_user_from_dsg(request: Request, token: str) -> User:
+    """Authenticate via DatasetGate and return a clio-store User."""
+    resolved_token = _resolve_token(request, token)
+    if not resolved_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # Check in-memory cache
+    cached = _dsg_user_cache.get(resolved_token)
+    if cached and time.time() - cached[0] < USER_REFRESH_SECS:
+        return cached[1]
+
+    # Call DatasetGate
+    try:
+        resp = httpx.get(
+            f"{DSG_URL}/api/v1/user/cache",
+            headers={"Authorization": f"Bearer {resolved_token}"},
+            timeout=10,
+        )
+    except httpx.RequestError as e:
+        print(f"DatasetGate request failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Auth service unavailable",
+        )
+
+    if resp.status_code != 200:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    user = _map_dsg_to_user(resp.json())
+    _dsg_user_cache[resolved_token] = (time.time(), user)
+    return user
+
+
+def _get_user_from_legacy(token: str) -> User:
+    """Legacy Firestore-based token validation (FlyEM JWT or Google OAuth2)."""
     email = None
-    idinfo = None # Google ID token if supplied
+    idinfo = None
 
-    # Check if token is a "FlyEM token"
     if FLYEM_SECRET:
         try:
             decoded = jwt.decode(token, FLYEM_SECRET, algorithms="HS256")
@@ -319,7 +405,6 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
         except:
             pass
 
-    # Consider case when token passed is not a "FlyEM" token (with shared secret)
     if not email:
         credentials_exception = HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -344,6 +429,55 @@ def get_user_from_token(token: str = Depends(oauth2_scheme)) -> User:
         print(f"Valid token for user {email} but not associated with a valid user from Clio Firestore")
         raise credentials_exception
     return user
+
+
+def _dsg_group_members(user: User, groups: Set[str]) -> Set[str]:
+    """Fetch group members from DatasetGate."""
+    if not user.is_admin():
+        groups = groups & user.groups
+    if not groups:
+        return set()
+
+    members = set()
+    for group_name in groups:
+        cached = _dsg_group_members_cache.get(group_name)
+        if cached and time.time() - cached[0] < MEMBERSHIPS_REFRESH_SECS:
+            members.update(cached[1])
+            continue
+        try:
+            resp = httpx.get(
+                f"{DSG_URL}/api/v1/groups/{group_name}/members",
+                timeout=10,
+            )
+        except httpx.RequestError:
+            continue
+        if resp.status_code == 200:
+            group_emails = set(resp.json())
+            _dsg_group_members_cache[group_name] = (time.time(), group_emails)
+            members.update(group_emails)
+    return members
+
+
+def group_members(user: User, groups: Set[str]) -> Set[str]:
+    """Return set of email addresses of members within the given groups."""
+    if DSG_URL:
+        return _dsg_group_members(user, groups)
+    return users.group_members(user, groups)
+
+
+# handle OAuth2
+
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
+
+def get_user_from_token(request: Request, token: str = Depends(oauth2_scheme)) -> User:
+    """Check token and return user roles and data.
+
+    When DSG_URL is set, authenticates via DatasetGate.
+    Otherwise, uses legacy FlyEM/Google token validation with Firestore.
+    """
+    if DSG_URL:
+        return _get_user_from_dsg(request, token)
+    return _get_user_from_legacy(token)
 
 def get_user(current_user: User = Depends(get_user_from_token)):
     if current_user.disabled:

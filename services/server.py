@@ -1,13 +1,15 @@
 import sys
 import time
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from typing import Set
 
 from config import *
-from dependencies import get_user, users, datasets, User
+from dependencies import get_user, users, datasets, User, _resolve_token
+
 from stores import cache
 
+import httpx
 import jwt
 
 router = APIRouter()
@@ -20,14 +22,29 @@ _TOKEN_DURATION = 3 * _SECS_IN_WEEK
 async def refresh_caches(user: User = Depends(get_user)):
     """ Refresh caches rather than wait for timer. """
     datasets.refresh_cache()
-    users.refresh_cache()
+    if users is not None:
+        users.refresh_cache()
     cache.refresh_all()
 
 
 @router.post('/token')
 @router.post('/token/', include_in_schema=False)
-async def get_token(user: User = Depends(get_user)):
-    """ Return a long-lived FlyEM token """
+async def get_token(request: Request, user: User = Depends(get_user)):
+    """ Return a long-lived token. When DSG_URL is set, proxies to DatasetGate. """
+    if DSG_URL:
+        token = _resolve_token(request, request.headers.get("Authorization", "").removeprefix("Bearer ").strip())
+        try:
+            resp = httpx.post(
+                f"{DSG_URL}/api/v1/create_token",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+        except httpx.RequestError as e:
+            raise HTTPException(status_code=502, detail=f"DatasetGate unavailable: {e}")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=resp.text)
+        return resp.json()
+
     if FLYEM_SECRET is None:
         raise HTTPException(status_code=400, detail=f"Can't generate FlyEM token because FLYEM_SECRET not specified for this server")
     cur_time = int(time.time())

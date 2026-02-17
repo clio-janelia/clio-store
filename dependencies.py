@@ -11,7 +11,7 @@ from google.oauth2 import id_token
 from google.auth import exceptions
 
 from pydantic import BaseModel
-from pydantic.typing import List, Set, Dict, Any, Mapping, Optional
+from typing import List, Set, Dict, Any, Mapping, Optional
 
 from config import *
 from stores import firestore

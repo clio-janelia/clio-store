@@ -6,7 +6,7 @@ from dependencies import public_dataset, get_user, User
 from typing import Dict, List
 
 from pydantic import BaseModel
-from pydantic.typing import Optional
+from typing import Optional
 from urllib.parse import quote
 
 from stores import firestore

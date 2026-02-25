@@ -291,15 +291,15 @@ class UserCache(BaseModel):
         return members
 
 # --- Conditional UserCache initialization ---
-# When DSG_URL is set, auth goes through DatasetGate; no Firestore clio_users needed.
+# When DSG_URL is set, auth goes through DatasetGateway; no Firestore clio_users needed.
 if DSG_URL:
     users = None
-    print(f"DatasetGate auth enabled: {DSG_URL}")
+    print(f"DatasetGateway auth enabled: {DSG_URL}")
 else:
     users = UserCache(collection=firestore.get_collection([CLIO_USERS]))
     users.refresh_cache()
 
-# --- DatasetGate-backed caches ---
+# --- DatasetGateway-backed caches ---
 
 # token -> (timestamp, User)
 _dsg_user_cache = {}
@@ -322,7 +322,7 @@ def _resolve_token(request: Request, token: str) -> str:
 
 
 def _map_dsg_to_user(dsg_data: dict) -> User:
-    """Map DatasetGate /api/v1/user/cache response to clio-store User model."""
+    """Map DatasetGateway /api/v1/user/cache response to clio-store User model."""
     global_roles = set()
     ds_roles = {}
 
@@ -351,7 +351,7 @@ def _map_dsg_to_user(dsg_data: dict) -> User:
 
 
 def _get_user_from_dsg(request: Request, token: str) -> User:
-    """Authenticate via DatasetGate and return a clio-store User."""
+    """Authenticate via DatasetGateway and return a clio-store User."""
     resolved_token = _resolve_token(request, token)
     if not resolved_token:
         raise HTTPException(
@@ -365,7 +365,7 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
     if cached and time.time() - cached[0] < USER_REFRESH_SECS:
         return cached[1]
 
-    # Call DatasetGate
+    # Call DatasetGateway
     try:
         resp = httpx.get(
             f"{DSG_URL}/api/v1/user/cache",
@@ -373,7 +373,7 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
             timeout=10,
         )
     except httpx.RequestError as e:
-        print(f"DatasetGate request failed: {e}")
+        print(f"DatasetGateway request failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Auth service unavailable",
@@ -432,7 +432,7 @@ def _get_user_from_legacy(token: str) -> User:
 
 
 def _dsg_group_members(user: User, groups: Set[str]) -> Set[str]:
-    """Fetch group members from DatasetGate."""
+    """Fetch group members from DatasetGateway."""
     if not user.is_admin():
         groups = groups & user.groups
     if not groups:
@@ -472,7 +472,7 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token", auto_error=False)
 def get_user_from_token(request: Request, token: str = Depends(oauth2_scheme)) -> User:
     """Check token and return user roles and data.
 
-    When DSG_URL is set, authenticates via DatasetGate.
+    When DSG_URL is set, authenticates via DatasetGateway.
     Otherwise, uses legacy FlyEM/Google token validation with Firestore.
     """
     if DSG_URL:

@@ -1,4 +1,4 @@
-"""Export clio-store auth data from Firestore to JSON for DatasetGate migration.
+"""Export clio-store auth data from Firestore to JSON for DatasetGateway migration.
 
 Usage:
     python scripts/export_auth.py [output_file]

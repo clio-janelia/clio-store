@@ -12,11 +12,11 @@ router = APIRouter()
 
 
 def _check_dsg_redirect():
-    """Raise 501 if user management has moved to DatasetGate."""
+    """Raise 501 if user management has moved to DatasetGateway."""
     if DSG_URL:
         raise HTTPException(
             status_code=501,
-            detail=f"User management has moved to DatasetGate ({DSG_URL})",
+            detail=f"User management has moved to DatasetGateway ({DSG_URL})",
         )
 
 

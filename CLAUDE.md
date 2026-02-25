@@ -6,7 +6,7 @@ FastAPI server for managing connectomics/EM (electron microscopy) datasets. Depl
 
 - **Framework**: FastAPI (with Pydantic v1)
 - **Data stores**: Google Firestore, BigQuery, Cloud Storage
-- **Auth**: Google OAuth2 + FlyEM JWT, or DatasetGate (when `DSG_URL` is set)
+- **Auth**: Google OAuth2 + FlyEM JWT, or DatasetGateway (when `DSG_URL` is set)
 - **Server**: Hypercorn (production), Uvicorn (development)
 - **Language**: Python 3.12
 
@@ -32,7 +32,7 @@ hypercorn main:app --bind 0.0.0.0:8000 --reload
 ### Auth Flow
 
 Token -> `get_user_from_token()` -> either:
-1. **DatasetGate** (if `DSG_URL` is set): forwards token to DatasetGate service, returns `User` with roles
+1. **DatasetGateway** (if `DSG_URL` is set): forwards token to DatasetGateway service, returns `User` with roles
 2. **Legacy**: Google OAuth2 ID token verification / FlyEM JWT verification -> returns `User` with roles
 
 ### Role System
@@ -63,7 +63,7 @@ Token -> `get_user_from_token()` -> either:
 | Variable | Description |
 |----------|-------------|
 | `OWNER` | Email that automatically gets global `admin` privileges |
-| `DSG_URL` | DatasetGate URL; when set, auth delegates to DatasetGate |
+| `DSG_URL` | DatasetGateway URL; when set, auth delegates to DatasetGateway |
 | `FLYEM_SECRET` | Secret for issuing FlyEM JWT tokens |
 | `TEST_USER` | When set, bypasses auth and uses this email |
 | `URL_PREFIX` | Prefix added before all API endpoints (default: empty) |

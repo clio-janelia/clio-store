@@ -30,7 +30,7 @@ async def refresh_caches(user: User = Depends(get_user)):
 @router.post('/token')
 @router.post('/token/', include_in_schema=False)
 async def get_token(request: Request, user: User = Depends(get_user)):
-    """ Return a long-lived token. When DSG_URL is set, proxies to DatasetGate. """
+    """ Return a long-lived token. When DSG_URL is set, proxies to DatasetGateway. """
     if DSG_URL:
         token = _resolve_token(request, request.headers.get("Authorization", "").removeprefix("Bearer ").strip())
         try:
@@ -40,7 +40,7 @@ async def get_token(request: Request, user: User = Depends(get_user)):
                 timeout=10,
             )
         except httpx.RequestError as e:
-            raise HTTPException(status_code=502, detail=f"DatasetGate unavailable: {e}")
+            raise HTTPException(status_code=502, detail=f"DatasetGateway unavailable: {e}")
         if resp.status_code != 200:
             raise HTTPException(status_code=resp.status_code, detail=resp.text)
         return resp.json()

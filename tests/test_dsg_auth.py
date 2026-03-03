@@ -221,17 +221,19 @@ class TestGetUserFromDsg:
 
 class TestDsgGroupMembers:
     def test_returns_member_emails(self):
-        admin = User(email="a@test.com", name="A", global_roles={"admin"})
+        admin = User(email="a@test.com", name="A", global_roles={"admin"}, token="fake-token")
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = ["m1@test.com", "m2@test.com"]
 
-        with patch("dependencies.httpx.get", return_value=mock_resp):
+        with patch("dependencies.httpx.get", return_value=mock_resp) as mock_get:
             members = _dsg_group_members(admin, {"grp1"})
         assert members == {"m1@test.com", "m2@test.com"}
+        mock_get.assert_called_once()
+        assert mock_get.call_args.kwargs["headers"] == {"Authorization": "Bearer fake-token"}
 
     def test_non_admin_filtered_to_own_groups(self):
-        user = User(email="u@test.com", name="U", groups={"grp1"})
+        user = User(email="u@test.com", name="U", groups={"grp1"}, token="fake-token")
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = ["m@test.com"]
@@ -243,7 +245,7 @@ class TestDsgGroupMembers:
         assert members == {"m@test.com"}
 
     def test_admin_can_query_any_group(self):
-        admin = User(email="a@test.com", name="A", global_roles={"admin"})
+        admin = User(email="a@test.com", name="A", global_roles={"admin"}, token="fake-token")
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = ["m@test.com"]
@@ -253,7 +255,7 @@ class TestDsgGroupMembers:
         assert mock_get.call_count == 1
 
     def test_results_cached(self):
-        admin = User(email="a@test.com", name="A", global_roles={"admin"})
+        admin = User(email="a@test.com", name="A", global_roles={"admin"}, token="fake-token")
         mock_resp = MagicMock()
         mock_resp.status_code = 200
         mock_resp.json.return_value = ["m@test.com"]
@@ -264,13 +266,13 @@ class TestDsgGroupMembers:
             assert mock_get.call_count == 1
 
     def test_connection_error_silently_skipped(self):
-        admin = User(email="a@test.com", name="A", global_roles={"admin"})
+        admin = User(email="a@test.com", name="A", global_roles={"admin"}, token="fake-token")
         with patch("dependencies.httpx.get", side_effect=httpx.ConnectError("fail")):
             members = _dsg_group_members(admin, {"grp1"})
         assert members == set()
 
     def test_multiple_groups_merged(self):
-        admin = User(email="a@test.com", name="A", global_roles={"admin"})
+        admin = User(email="a@test.com", name="A", global_roles={"admin"}, token="fake-token")
 
         def fake_get(url, **kwargs):
             resp = MagicMock()

@@ -169,7 +169,11 @@ class User(BaseModel):
     datasets: Optional[Dict[str, Set[str]]] = {}
     groups: Optional[Set[str]] = set()
 
+    token: Optional[str] = None
     google_idinfo: Optional[Mapping[str, Any]] = None
+
+    class Config:
+        fields = {"token": {"exclude": True}}
 
     def has_role(self, role: str, dataset: str = "") -> bool:
         if role in self.global_roles:
@@ -387,6 +391,7 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
         )
 
     user = _map_dsg_to_user(resp.json())
+    user.token = resolved_token
     _dsg_user_cache[resolved_token] = (time.time(), user)
     return user
 
@@ -447,6 +452,7 @@ def _dsg_group_members(user: User, groups: Set[str]) -> Set[str]:
         try:
             resp = httpx.get(
                 f"{DSG_URL}/api/v1/groups/{group_name}/members",
+                headers={"Authorization": f"Bearer {user.token}"},
                 timeout=10,
             )
         except httpx.RequestError:

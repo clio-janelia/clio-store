@@ -75,6 +75,10 @@ TRANSFER_DEST: the transfer network cache location.
 
 NEUPRINT_APPLICATION_CREDENTIALS: credentials to access neuprint
 
+DSG_URL: base URL of a DatasetGateway server (e.g., `https://dsg.example.org`). When set,
+all authentication and authorization is delegated to DatasetGateway instead of using
+the legacy Google OAuth2 / FlyEM JWT path. See the "Using DatasetGateway" section below.
+
 ### Used during local testing or use outside of Cloud Run / Cloud Functions
 
 GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.
@@ -92,8 +96,26 @@ Datasets can be marked public, which makes them effectively "clio_general" by de
 Specific applications that work within the clio environment
 are welcome to define custom roles or granularity at the dataset or global level.
 
-For now, a token is validated on Google for each invocation but future work involves creating
-a JWT, which might be necessary for some low-latency use cases.
+### Using DatasetGateway
+
+When `DSG_URL` is set, clio-store delegates authentication and authorization to a
+DatasetGateway server. To deploy with DatasetGateway:
+
+1. Set the `DSG_URL` environment variable to the DatasetGateway base URL
+   (e.g., `https://dsg.example.org`).
+2. Tokens can be passed via `Authorization: Bearer` header, `dsg_token` cookie, or
+   `?dsg_token=` query parameter.
+3. Obtain a long-lived API token by calling `POST /v2/server/token` with a valid
+   short-lived token — this proxies to DatasetGateway's token creation endpoint.
+4. User and role management is handled through DatasetGateway's web UI or admin panel.
+   The `/v2/users` endpoints return HTTP 501 when `DSG_URL` is set.
+
+Example using a DatasetGateway token:
+
+    % curl -X GET --header "Authorization: Bearer <dsg-token>" https://my-api-endpoint/v2/datasets
+
+If migrating from Firestore-based auth, see [docs/dsg-integration.md](docs/dsg-integration.md) for the full
+migration procedure and permission mapping details.
 
 ## Adding services
 

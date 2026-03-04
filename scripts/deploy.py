@@ -23,12 +23,24 @@ DEPLOY_SETTINGS = [
     ("SERVICE_NAME", "Cloud Run service name", "clio-store", False),
 ]
 
-# Environment variables to set on the Cloud Run service
+# Environment variables to set on the Cloud Run service.
+# Prompted in order; NEUPRINT_APPLICATION_CREDENTIALS and FLYEM_SECRET are
+# skipped when DSG_URL is set (neuPrintHTTP uses DSG tokens directly, and
+# FlyEM JWT is part of legacy auth).
 SERVICE_ENV_VARS = [
     ("OWNER", "Admin email (OWNER)", "", True),
     ("DSG_URL", "DatasetGateway URL (DSG_URL)", "", True),
-    ("FLYEM_SECRET", "FlyEM JWT secret (FLYEM_SECRET)", "", True),
+    ("URL_PREFIX", "API URL prefix (URL_PREFIX)", "", True),
     ("ALLOWED_ORIGINS", "CORS allowed origins (ALLOWED_ORIGINS)", "*", True),
+    ("SIG_BUCKET", "Signature query GCS bucket (SIG_BUCKET)", "", True),
+    ("TRANSFER_FUNC", "Transfer cloud run location (TRANSFER_FUNC)", "", True),
+    ("TRANSFER_DEST", "Transfer cache location (TRANSFER_DEST)", "", True),
+]
+
+# Only prompted when DSG_URL is not set (legacy mode)
+LEGACY_ENV_VARS = [
+    ("NEUPRINT_APPLICATION_CREDENTIALS", "Neuprint credentials (NEUPRINT_APPLICATION_CREDENTIALS)", "", True),
+    ("FLYEM_SECRET", "FlyEM JWT secret (FLYEM_SECRET)", "", True),
 ]
 
 
@@ -147,6 +159,16 @@ def main():
     for key, label, default, optional in SERVICE_ENV_VARS:
         env[key] = prompt_value(label, saved.get(key, default), optional)
 
+    # Only prompt for legacy-mode vars when DSG_URL is not set
+    all_env_keys = [k for k, _, _, _ in SERVICE_ENV_VARS]
+    if env.get("DSG_URL"):
+        print("\n  (DSG_URL is set — skipping legacy auth settings)\n")
+    else:
+        print()
+        for key, label, default, optional in LEGACY_ENV_VARS:
+            env[key] = prompt_value(label, saved.get(key, default), optional)
+        all_env_keys += [k for k, _, _, _ in LEGACY_ENV_VARS]
+
     # Save for next time
     save_env(ENV_FILE, env)
 
@@ -157,7 +179,7 @@ def main():
 
     # Collect non-empty service env vars
     env_var_pairs = []
-    for key, _, _, _ in SERVICE_ENV_VARS:
+    for key in all_env_keys:
         if env.get(key):
             env_var_pairs.append(f"{key}={env[key]}")
 

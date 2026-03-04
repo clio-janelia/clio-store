@@ -8,49 +8,33 @@ is built into the system, allowing selective read/write/metadata access to datas
 
 ## Installation
 
-Setup Local Python Environment:
+Install [pixi](https://pixi.sh), then:
 
-We suggest creating a virual environment using [conda](https://conda.io/projects/conda/en/latest/user-guide/install/index.html), [mamba](https://mamba.readthedocs.io/en/latest/installation.html), or pyenv, and installing python
-within that environment.
-
-Then:
 ```
-pip install -r requirements.txt
+pixi install
 ```
 
 ### Run the server locally:
 ```
-uvicorn main:app --reload
-```
-or if you want to run HTTP/2:
-```
-hypercorn main:app --bind 0.0.0.0:8000 --reload
+pixi run dev
 ```
 
-Then check it out: http://localhost:8000/
+Then check it out: http://localhost:8080/
 
-### Run on Cloud Run:
+### Deploy to Cloud Run:
 
 ```
-# Creating Artifact Registry in us-east4 (one time)
-gcloud artifacts repositories create clio-store \
-  --repository-format=docker \
-  --location=us-east4 \
-  --project={project-id} \
-  --description="Store for Clio application"
-
-# Then when building and deploying
-gcloud run deploy clio-store \
-  --source . \
-  --region us-east4 \
-  --allow-unauthenticated \
-  --use-http2
+pixi run deploy
 ```
+
+The deploy script interactively prompts for GCP project, region, service name, and
+environment variables, and saves settings to `.env` for reuse on subsequent deploys.
+Use `pixi run deploy --dry-run` to preview the gcloud command without executing.
 
 Note that we explicitly configure the Cloud Run service to use HTTP/2 which removes
 limitations in response sizes (only 32 MiB for HTTP/1). Deployed containers will
 use hypercorn because of the need for HTTP/2 to avoid Google's limit on response
-sizes. 
+sizes.
 
 ## Environment variables 
 
@@ -73,7 +57,9 @@ TRANSFER_FUNC: the transfer network cloud run location.
 
 TRANSFER_DEST: the transfer network cache location.
 
-NEUPRINT_APPLICATION_CREDENTIALS: credentials to access neuprint
+NEUPRINT_APPLICATION_CREDENTIALS: credentials to access neuprint (legacy mode only;
+not needed when `DSG_URL` is set, since clio-store forwards the user's DSG token to
+neuPrintHTTP which also authenticates via DatasetGateway).
 
 DSG_URL: base URL of a DatasetGateway server (e.g., `https://dsg.example.org`). When set,
 all authentication and authorization is delegated to DatasetGateway instead of using

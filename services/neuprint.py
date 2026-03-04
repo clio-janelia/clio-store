@@ -1,11 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-import aiohttp 
+import aiohttp
 from pydantic import BaseModel
 
 from config import *
 from dependencies import app, get_user, get_dataset, User
 
-# token for accessing neuprint
+# Legacy neuprint credentials (only used when DSG_URL is not set)
 NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
 
 router = APIRouter()
@@ -19,16 +19,11 @@ def _get_session():
         _client_session = aiohttp.ClientSession()
     return _client_session
 
-# accesses the global app to register a shutdown event
-@app.on_event("shutdown")
-async def cleanup():
+async def _cleanup():
     if _client_session is not None:
         await _client_session.close()
 
-neuprint_headers = {
-    "Authorization": f"Bearer {NEUPRINT_CREDENTIALS}",
-    "content-type": "application/json"
-}
+app.router.on_shutdown.append(_cleanup)
 
 class NeuprintRequest(BaseModel):
     """Request object for custom neuPrint requests.
@@ -48,8 +43,17 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
     else:
         raise HTTPException(status_code=400, detail=f"dataset {dataset} has no assigned neuprint server")
 
+    # When DSG_URL is set, forward the user's DSG token to neuPrintHTTP
+    # (which also authenticates via DatasetGateway). Otherwise fall back
+    # to the static NEUPRINT_APPLICATION_CREDENTIALS.
+    if DSG_URL and user.token:
+        token = user.token
+    else:
+        token = NEUPRINT_CREDENTIALS
+    headers = {"Authorization": f"Bearer {token}", "content-type": "application/json"}
+
     try:
-        async with _get_session().post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=neuprint_headers) as resp:
+        async with _get_session().post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=headers) as resp:
             response = await resp.json()
     except Exception as e:
         print(e)

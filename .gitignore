@@ -49,3 +49,9 @@ docs/_build/
 .python-version
 /venv/
 /.pyenv/
+
+# Deployment
+.env
+
+# Pixi
+.pixi/

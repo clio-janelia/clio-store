@@ -8,36 +8,25 @@ platforms = ["osx-arm64", "osx-64", "linux-64"]
 python = "3.12.*"
 pip = "*"
 
-# Production dependencies
+# Production dependencies (direct imports only; transitive deps resolved by pixi)
 [feature.prod.pypi-dependencies]
 aiohttp = ">=3.11.0"
-anyio = ">=3.6.2"
-cachetools = ">=5.2.0"
-fastapi = ">=0.115.6"
-google-api-core = ">=2.17.1"
-google-auth = ">=2.28.1"
-google-cloud-appengine-logging = ">=1.4.5"
-google-cloud-audit-log = ">=0.3.0"
-google-cloud-bigquery = ">=3.17.2"
-google-cloud-bigquery-storage = ">=2.24.0"
-google-cloud-core = ">=2.4.1"
+fastapi = ">=0.115.0"
+google-auth = ">=2.28.0"
+google-cloud-bigquery = ">=3.17.0"
 google-cloud-firestore = ">=2.15.0"
-google-cloud-logging = ">=3.9.0"
 google-cloud-storage = ">=2.14.0"
-grpcio = ">=1.62.3"
-grpcio-status = ">=1.62.3"
-httpx = ">=0.23.1"
-hypercorn = ">=0.14.3"
+httpx = ">=0.27.0"
+hypercorn = ">=0.17.0"
 pydantic = ">=1.10.18,<2"
-python-multipart = ">=0.0.6"
-pyjwt = ">=2.6.0"
-requests = ">=2.32.4"
-starlette = ">=0.40.0"
-uvicorn = ">=0.20.0"
+python-multipart = ">=0.0.9"
+pyjwt = ">=2.8.0"
+requests = ">=2.32.0"
+uvicorn = ">=0.30.0"
 
 # Development dependencies
 [feature.dev.pypi-dependencies]
-pytest = ">=7.0"
+pytest = ">=8.0"
 
 # Environments
 [environments]

@@ -10,13 +10,20 @@ NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
 
 router = APIRouter()
 
-# create a persistent session for this service
-client_session = aiohttp.ClientSession()
+# Lazily created persistent session (aiohttp requires a running event loop)
+_client_session = None
+
+def _get_session():
+    global _client_session
+    if _client_session is None or _client_session.closed:
+        _client_session = aiohttp.ClientSession()
+    return _client_session
 
 # accesses the global app to register a shutdown event
 @app.on_event("shutdown")
 async def cleanup():
-    await client_session.close()
+    if _client_session is not None:
+        await _client_session.close()
 
 neuprint_headers = {
     "Authorization": f"Bearer {NEUPRINT_CREDENTIALS}",
@@ -42,7 +49,7 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
         raise HTTPException(status_code=400, detail=f"dataset {dataset} has no assigned neuprint server")
 
     try:
-        async with client_session.post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=neuprint_headers) as resp:
+        async with _get_session().post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=neuprint_headers) as resp:
             response = await resp.json()
     except Exception as e:
         print(e)

@@ -56,7 +56,7 @@ def post_users(postdata: Dict[str, UserPayload], user: User = Depends(get_user))
 
 @router.delete('')
 @router.delete('/', include_in_schema=False)
-def delete_users(deleted_emails: List, user: User = Depends(get_user)):
+def delete_users(deleted_emails: List[str], user: User = Depends(get_user)):
     _check_dsg_redirect()
     if not user.is_admin():
         raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")

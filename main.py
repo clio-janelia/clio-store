@@ -1,7 +1,7 @@
 from fastapi import Depends
 from fastapi.responses import HTMLResponse
 
-from config import URL_PREFIX
+from config import URL_PREFIX, DSG_URL
 from dependencies import get_user, app
 from services import annotations_v3, annotations_v2, atlas, datasets, image_query, image_transfer, \
     kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request, server, \
@@ -40,6 +40,11 @@ app.include_router(pull_request.router, prefix=f"{URL_PREFIX}/v2/pull-request", 
 app.include_router(site_reports.router, prefix=f"{URL_PREFIX}/v2/site-reports", dependencies=[Depends(get_user)])
 app.include_router(server.router, prefix=f"{URL_PREFIX}/v2/server", dependencies=[Depends(get_user)])
 app.include_router(volumes.router, prefix=f"{URL_PREFIX}/v2/volumes")
+
+# DSG browser auth routes (login, profile, logout) — top-level, not under /v2/
+if DSG_URL:
+    from services import auth
+    app.include_router(auth.router, prefix=f"{URL_PREFIX}")
 
 # allow unauthenticated to access root documentation
 @app.get("/", response_class=HTMLResponse)

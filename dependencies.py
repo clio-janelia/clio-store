@@ -22,22 +22,40 @@ import jwt
 # stores reference to global APP
 app = FastAPI()
 
+def _cors_origin(request: Request) -> str:
+    """Return the origin to use in Access-Control-Allow-Origin.
+
+    When ALLOWED_ORIGINS is '*', reflect the request's Origin header so that
+    credentials: 'include' works (browsers reject wildcard with credentials).
+    When ALLOWED_ORIGINS is a comma-separated list, only reflect if the
+    request Origin is in the list.
+    """
+    origin = request.headers.get("origin", "")
+    if ALLOWED_ORIGINS == "*":
+        return origin or "*"
+    allowed = [o.strip() for o in ALLOWED_ORIGINS.split(",")]
+    if origin in allowed:
+        return origin
+    return allowed[0] if allowed else "*"
+
+def _set_cors_headers(response: Response, request: Request):
+    response.headers['Access-Control-Allow-Origin'] = _cors_origin(request)
+    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, Range'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+
 # handle CORS preflight requests
 @app.options('/{rest_of_path:path}', include_in_schema=False)
 async def preflight_handler(request: Request, rest_of_path: str) -> Response:
     response = Response()
-    response.headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS
-    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, Range'
+    _set_cors_headers(response, request)
     return response
 
 # set CORS headers
 @app.middleware("http")
 async def add_CORS_header(request: Request, call_next):
     response = await call_next(request)
-    response.headers['Access-Control-Allow-Origin'] = ALLOWED_ORIGINS
-    response.headers['Access-Control-Allow-Methods'] = 'POST, GET, DELETE, OPTIONS'
-    response.headers['Access-Control-Allow-Headers'] = 'Authorization, Content-Type, Range'
+    _set_cors_headers(response, request)
     return response
    
 def version_str_to_int(version_str: str) -> int:

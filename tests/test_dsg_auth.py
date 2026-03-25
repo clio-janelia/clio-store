@@ -382,3 +382,104 @@ class TestDsgEndpoints:
                 headers={"Authorization": "Bearer tok"},
             )
         assert resp.status_code == 502
+
+
+# ===========================================================================
+# Auth routes (/login, /profile, /logout)
+# ===========================================================================
+
+class TestAuthRoutes:
+    @pytest.fixture(autouse=True)
+    def _setup_client(self, client, app):
+        """Override get_user to bypass real auth for endpoint tests."""
+        self._user = User(
+            email="user@test.com", name="Test User",
+            global_roles={"clio_general"},
+            datasets={"ds1": {"clio_general", "clio_write"}},
+            groups={"grp1"},
+        )
+        app.dependency_overrides[get_user] = lambda: self._user
+        self.client = client
+        yield
+        app.dependency_overrides.clear()
+
+    def test_login_redirects_to_dsg(self):
+        resp = self.client.get(
+            "/login?redirect=https://clio.janelia.org/",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert location.startswith("http://dsg.test/api/v1/authorize")
+        assert "redirect=" in location
+        assert "clio.janelia.org" in location
+
+    def test_login_requires_redirect_param(self):
+        resp = self.client.get("/login")
+        assert resp.status_code == 422  # FastAPI validation error
+
+    def test_profile_returns_user_info(self):
+        resp = self.client.get("/profile")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "user@test.com"
+        assert data["name"] == "Test User"
+        assert "clio_general" in data["global_roles"]
+        assert "ds1" in data["datasets"]
+        assert "clio_general" in data["datasets"]["ds1"]
+        assert "clio_write" in data["datasets"]["ds1"]
+        assert "grp1" in data["groups"]
+
+    def test_profile_empty_roles(self):
+        from dependencies import app as _app
+        empty_user = User(email="empty@test.com", name="Empty")
+        _app.dependency_overrides[get_user] = lambda: empty_user
+        resp = self.client.get("/profile")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["email"] == "empty@test.com"
+        assert data["global_roles"] == []
+        assert data["datasets"] == {}
+        assert data["groups"] == []
+
+    def test_logout_redirects_to_dsg(self):
+        resp = self.client.post("/logout", follow_redirects=False)
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert location == "http://dsg.test/api/v1/logout"
+
+
+# ===========================================================================
+# CORS credentials support
+# ===========================================================================
+
+class TestCorsCredentials:
+    @pytest.fixture(autouse=True)
+    def _setup_client(self, client, app):
+        app.dependency_overrides[get_user] = lambda: User(
+            email="u@test.com", name="U",
+        )
+        self.client = client
+        yield
+        app.dependency_overrides.clear()
+
+    def test_cors_reflects_origin(self):
+        resp = self.client.get(
+            "/profile",
+            headers={"Origin": "https://clio.janelia.org"},
+        )
+        assert resp.headers["access-control-allow-origin"] == "https://clio.janelia.org"
+        assert resp.headers["access-control-allow-credentials"] == "true"
+
+    def test_cors_preflight_reflects_origin(self):
+        resp = self.client.options(
+            "/profile",
+            headers={"Origin": "https://clio.janelia.org"},
+        )
+        assert resp.headers["access-control-allow-origin"] == "https://clio.janelia.org"
+        assert resp.headers["access-control-allow-credentials"] == "true"
+
+    def test_cors_no_origin_returns_wildcard(self):
+        resp = self.client.get("/profile")
+        # No Origin header → falls back to "*" when ALLOWED_ORIGINS is "*"
+        assert resp.headers["access-control-allow-origin"] in ("*", "")

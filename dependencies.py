@@ -182,6 +182,7 @@ class User(BaseModel):
 
     name: Optional[str]  # full name
     org: Optional[str]   # affiliated organization
+    picture: Optional[str] = None  # profile image URL (e.g., Google avatar)
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
@@ -363,9 +364,12 @@ def _map_dsg_to_user(dsg_data: dict) -> User:
     for ds_name in dsg_data.get("datasets_admin", []):
         ds_roles.setdefault(ds_name, set()).add("dataset_admin")
 
+    # DatasetGateway's /api/v1/user/cache returns the avatar as `picture_url`
+    # (see DatasetGateway/dsg/core/cache.py::build_permission_cache).
     return User(
         email=dsg_data["email"],
         name=dsg_data.get("name", ""),
+        picture=dsg_data.get("picture_url"),
         global_roles=global_roles,
         datasets=ds_roles,
         groups=set(dsg_data.get("groups", [])),

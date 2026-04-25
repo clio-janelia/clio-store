@@ -21,6 +21,59 @@ pixi run dev
 
 Then check it out: http://localhost:8080/
 
+`pixi run dev` runs uvicorn with auto-reload over plain HTTP. To run over HTTPS
+with HTTP/2 (matching production) and per-request access logging, pass `--certs`
+pointing at a directory holding `localhost+2.pem` and `localhost+2-key.pem`:
+
+```
+pixi run dev --certs ../certs
+```
+
+This switches the launcher to hypercorn with `--access-logfile -`, so every
+request is logged to stdout. See [Local HTTPS with mkcert](#local-https-with-mkcert)
+for how to generate the certs.
+
+#### Local HTTPS with mkcert
+
+Some flows (cookie-based auth from a browser, testing against a DSG instance
+that requires HTTPS origins) need TLS locally. The dev launcher uses
+[mkcert](https://github.com/FiloSottile/mkcert) certs by convention.
+
+1. Install mkcert and trust its local CA (one-time):
+
+   ```
+   # macOS:   brew install mkcert nss
+   # Linux:   see https://github.com/FiloSottile/mkcert#installation
+   mkcert -install
+   ```
+
+2. Generate a cert covering localhost, the loopback IP, and a Janelia-style hostname:
+
+   ```
+   mkdir -p ../certs && cd ../certs
+   mkcert localhost 127.0.0.1 clio-dev.janelia.org
+   ```
+
+   This produces `localhost+2.pem` and `localhost+2-key.pem` (the `+2` reflects
+   the two extra SANs beyond the first name). Keep the directory outside the
+   repo so the keys aren't committed.
+
+3. Add the hostname to `/etc/hosts` so browsers resolve it locally:
+
+   ```
+   sudo sh -c 'echo "127.0.0.1 clio-dev.janelia.org" >> /etc/hosts'
+   ```
+
+4. Start the server with TLS:
+
+   ```
+   pixi run dev --certs ../certs
+   ```
+
+   Then open `https://clio-dev.janelia.org:8080/` (or `https://localhost:8080/`).
+   Cookie-based DSG auth requires the hostname form, since browsers reject
+   `Secure` cookies on plain `localhost` over HTTP.
+
 ### Deploy to Cloud Run:
 
 ```

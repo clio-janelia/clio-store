@@ -10,9 +10,7 @@ See `dsg-integration.md` for the existing backend DSG integration design (permis
 
 **Cookie domain:** All services (clio-store, clio_website, DSG) are under `*.janelia.org` in production. `AUTH_COOKIE_DOMAIN=.janelia.org` is set in DSG (same as neuprint). The `dsg_token` HttpOnly cookie flows to all services automatically.
 
-**Auth fallback:** The frontend keeps Google OAuth as fallback when the backend doesn't have DSG routes (i.e., `DSG_URL` not set). The frontend detects auth method by probing `GET {backendUrl}/profile` — if 404, it falls back to Google OAuth.
-
-**Local development:** `TEST_USER` env var on the backend bypasses auth entirely.
+**Local development:** Local dev uses the same DSG flow as production. Run with `pixi run dev --certs ../certs` so the browser can attach a `Secure` `dsg_token` cookie over HTTPS — see README.md for the mkcert setup.
 
 ## Login Flow (DSG Mode)
 

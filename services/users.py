@@ -1,70 +1,35 @@
-import time
+"""User management has moved to DatasetGateway.
 
-from fastapi import APIRouter, Depends, HTTPException
-from typing import List, Dict, Set, Optional
-from pydantic import BaseModel
+These endpoints exist only to return a clear 501 to legacy callers.
+"""
 
-from config import *
-from dependencies import get_user, users, User
-from stores import firestore
+from fastapi import APIRouter, HTTPException
+
+from config import DSG_URL
 
 router = APIRouter()
 
 
-def _check_dsg_redirect():
-    """Raise 501 if user management has moved to DatasetGateway."""
-    if DSG_URL:
-        raise HTTPException(
-            status_code=501,
-            detail=f"User management has moved to DatasetGateway ({DSG_URL})",
-        )
+def _moved():
+    raise HTTPException(
+        status_code=501,
+        detail=f"User management has moved to DatasetGateway ({DSG_URL})",
+    )
 
 
 @router.get('')
 @router.get('/', include_in_schema=False)
-def get_users(user: User = Depends(get_user)) -> Dict[str, User]:
-    _check_dsg_redirect()
-    if not user.is_admin():
-        raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
-    try:
-        return users.refresh_cache()
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=400, detail=f"error in retrieving users: {e}")
+def get_users():
+    _moved()
 
-class UserPayload(BaseModel):
-    global_roles: Optional[Set[str]] = set()
-    datasets: Optional[Dict[str, Set[str]]] = {}
 
 @router.post('')
 @router.post('/', include_in_schema=False)
-def post_users(postdata: Dict[str, UserPayload], user: User = Depends(get_user)):
-    _check_dsg_redirect()
-    if not user.is_admin():
-        raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
-    try:
-        collection = firestore.get_collection([CLIO_USERS])
-        for email, data in postdata.items():
-            user_dict = data.dict()
-            collection.document(email).set(user_dict)
-            user_dict["email"] = email
-            user_with_email = User(**user_dict)
-            users.cache_user(user_with_email)
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=400, detail=f"error in posting users: {e}")
+def post_users():
+    _moved()
+
 
 @router.delete('')
 @router.delete('/', include_in_schema=False)
-def delete_users(deleted_emails: List[str], user: User = Depends(get_user)):
-    _check_dsg_redirect()
-    if not user.is_admin():
-        raise HTTPException(status_code=401, detail="user lacks permission for /users endpoint")
-    try:
-        collection = firestore.get_collection([CLIO_USERS])
-        for email in deleted_emails:
-            collection.document(email).delete()
-            users.uncache_user(email)
-    except Exception as e:
-        print(e)
-        raise HTTPException(status_code=400, detail=f"error in deleting users: {e}")
+def delete_users():
+    _moved()

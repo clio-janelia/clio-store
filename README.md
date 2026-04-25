@@ -14,6 +14,20 @@ Install [pixi](https://pixi.sh), then:
 pixi install
 ```
 
+### Configure environment
+
+Runtime configuration lives in `.env` (gitignored). Bootstrap it with:
+
+```
+pixi run setup
+```
+
+This walks you through the runtime env vars (DSG_URL is required) and
+writes `.env`. Re-running prompts again with the current values as defaults.
+`pixi run setup --use-env` skips prompts for keys already in `.env` —
+useful in CI or when you only want to fill in missing pieces. See
+`.env.example` for the full list of variables and their meaning.
+
 ### Run the server locally:
 ```
 pixi run dev
@@ -89,72 +103,53 @@ limitations in response sizes (only 32 MiB for HTTP/1). Deployed containers will
 use hypercorn because of the need for HTTP/2 to avoid Google's limit on response
 sizes.
 
-## Environment variables 
+## Environment variables
 
-Configuration of an owner email, storage specifications, and other variables is handled
-through environment variables.  These can be set for Cloud Run services through the
-[console, command line, or YAML file](https://cloud.google.com/run/docs/configuring/environment-variables#console).
+Local dev reads these from `.env` (managed by `pixi run setup`). On Cloud Run
+they're set on the service — `pixi run deploy` injects them via `--set-env-vars`.
 
-Here is a list of variables:
+**Required**
 
-URL_PREFIX: a prefix to add to the API endpoint URLs, e.g. "/{URL_PREFIX}/v2/annotations"
+- `DSG_URL` — DatasetGateway base URL (e.g. `https://dsg.example.org`). All
+  authentication and authorization is delegated here.
+- `OWNER` — email that automatically receives global `admin` privileges.
 
-ALLOWED_ORIGINS: the allowed origins for CORS `Access-Control-Allow-Origin` header. 
-Default is the wildcard (*).
+**Optional**
 
-OWNER: the email address of a user that automatically gets admin privileges.
+- `URL_PREFIX` — prefix added to every API endpoint, e.g. `"/api"` →
+  `/api/v2/annotations`.
+- `ALLOWED_ORIGINS` — CORS `Access-Control-Allow-Origin` value. `*` (default)
+  or a comma-separated list of origins.
+- `SIG_BUCKET` — GCS bucket holding image signatures (powers `/v2/signatures`).
+- `TRANSFER_FUNC` — Cloud Function URL for `/v2/transfer`.
+- `TRANSFER_DEST` — destination cache for image transfers.
 
-SIG_BUCKET: the GCS bucket specifier for the dataset signatures.
+**Local-dev only**
 
-TRANSFER_FUNC: the transfer network cloud run location.
+- `GOOGLE_APPLICATION_CREDENTIALS` — path to a GCP service-account JSON. Cloud
+  Run uses workload identity automatically; not needed there.
 
-TRANSFER_DEST: the transfer network cache location.
+## Authentication and authorization
 
-NEUPRINT_APPLICATION_CREDENTIALS: credentials to access neuprint (legacy mode only;
-not needed when `DSG_URL` is set, since clio-store forwards the user's DSG token to
-neuPrintHTTP which also authenticates via DatasetGateway).
+clio-store delegates all authentication and authorization to DatasetGateway.
 
-DSG_URL: base URL of a DatasetGateway server (e.g., `https://dsg.example.org`). When set,
-all authentication and authorization is delegated to DatasetGateway instead of using
-the legacy Google OAuth2 / FlyEM JWT path. See the "Using DatasetGateway" section below.
+- Tokens can be passed via `Authorization: Bearer` header, `dsg_token` cookie,
+  or `?dsg_token=` query parameter.
+- Get a long-lived API token via `POST /v2/server/token` with any valid
+  short-lived token — it proxies to DatasetGateway's token creation endpoint.
+- User and role management lives entirely in DatasetGateway's web UI; the
+  `/v2/users` endpoints return HTTP 501.
+- Per-dataset roles map to DatasetGateway permissions: `view` →
+  `clio_general` (read + private annotations), `edit` → `clio_write`
+  (cross-user write). Global `admin` enables user management.
+- Datasets marked `public=true` in Firestore grant `clio_general` access to
+  all authenticated users.
 
-### Used during local testing or use outside of Cloud Run / Cloud Functions
-
-GOOGLE_APPLICATION_CREDENTIALS: set to credentials for app to access GCP services.
-
-TEST_USER: if set to an email, HTTP API will work as if given user was logged in.
-
-## Note on authentication and authorization
-
-The API is authenticated using a Google identification token, which can be retrieved using
-a client side oauth2 javascript client (or using gcloud as in the below examples).  Permissions
-are setup to be per dataset and global to clio.  The "clio_general" authorization level
-enables a user to add private annotations and view the data associated with the dataset.
-"clio_write" enables cross-user global write operations.  "admin" is needed for user management.
-Datasets can be marked public, which makes them effectively "clio_general" by default.
-Specific applications that work within the clio environment
-are welcome to define custom roles or granularity at the dataset or global level.
-
-### Using DatasetGateway
-
-When `DSG_URL` is set, clio-store delegates authentication and authorization to a
-DatasetGateway server. To deploy with DatasetGateway:
-
-1. Set the `DSG_URL` environment variable to the DatasetGateway base URL
-   (e.g., `https://dsg.example.org`).
-2. Tokens can be passed via `Authorization: Bearer` header, `dsg_token` cookie, or
-   `?dsg_token=` query parameter.
-3. Obtain a long-lived API token by calling `POST /v2/server/token` with a valid
-   short-lived token — this proxies to DatasetGateway's token creation endpoint.
-4. User and role management is handled through DatasetGateway's web UI or admin panel.
-   The `/v2/users` endpoints return HTTP 501 when `DSG_URL` is set.
-
-Example using a DatasetGateway token:
+Example call:
 
     % curl -X GET --header "Authorization: Bearer <dsg-token>" https://my-api-endpoint/v2/datasets
 
-If migrating from Firestore-based auth, see [docs/dsg-integration.md](docs/dsg-integration.md) for the full
-migration procedure and permission mapping details.
+See [docs/dsg-integration.md](docs/dsg-integration.md) for the permission mapping details.
 
 ## Adding services
 

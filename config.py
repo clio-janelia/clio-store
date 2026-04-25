@@ -1,4 +1,5 @@
 import os
+import sys
 
 # Allowed origins for CORS handling.
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
@@ -6,22 +7,15 @@ ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 # Prefix to add before the actual API endpoints
 URL_PREFIX = os.environ.get("URL_PREFIX", "")
 
-# if OWNER email env var is set, the email automatically gets global "admin" privileges
+# Email that automatically receives global "admin" privileges.
 OWNER = os.environ.get("OWNER", None)
 
-# if TEST_USER env var is set, the user is set to this user email.
-TEST_USER = os.environ.get("TEST_USER", None)
-
-# if FLYEM_SECRET env var is set, this server can issue FlyEM tokens.
-FLYEM_SECRET = os.environ.get("FLYEM_SECRET", None)
-
-# if DSG_URL is set, auth is handled by DatasetGateway instead of Firestore.
+# DatasetGateway base URL — required. clio-store delegates all auth/authz here.
 DSG_URL = os.environ.get("DSG_URL", None)
+if not DSG_URL:
+    sys.exit("error: DSG_URL must be set (run `pixi run setup` to configure)")
 
 # TODO -- should really be in adapters to store
-
-# firestore user collection name
-CLIO_USERS = "clio_users"
 
 # firestore dataset collection name
 CLIO_DATASETS = "clio_datasets"

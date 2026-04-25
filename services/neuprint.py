@@ -5,9 +5,6 @@ from pydantic import BaseModel
 from config import *
 from dependencies import app, get_user, get_dataset, User
 
-# Legacy neuprint credentials (only used when DSG_URL is not set)
-NEUPRINT_CREDENTIALS = os.environ.get("NEUPRINT_APPLICATION_CREDENTIALS")
-
 router = APIRouter()
 
 # Lazily created persistent session (aiohttp requires a running event loop)
@@ -26,8 +23,7 @@ async def _cleanup():
 app.router.on_shutdown.append(_cleanup)
 
 class NeuprintRequest(BaseModel):
-    """Request object for custom neuPrint requests.
-    """
+    """Request object for custom neuPrint requests."""
     cypher: str
     dataset: str
 
@@ -43,14 +39,10 @@ async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: Use
     else:
         raise HTTPException(status_code=400, detail=f"dataset {dataset} has no assigned neuprint server")
 
-    # When DSG_URL is set, forward the user's DSG token to neuPrintHTTP
-    # (which also authenticates via DatasetGateway). Otherwise fall back
-    # to the static NEUPRINT_APPLICATION_CREDENTIALS.
-    if DSG_URL and user.token:
-        token = user.token
-    else:
-        token = NEUPRINT_CREDENTIALS
-    headers = {"Authorization": f"Bearer {token}", "content-type": "application/json"}
+    # Forward the user's DSG token to neuPrintHTTP, which authenticates via DatasetGateway.
+    if not user.token:
+        raise HTTPException(status_code=401, detail="missing user token for neuprint forwarding")
+    headers = {"Authorization": f"Bearer {user.token}", "content-type": "application/json"}
 
     try:
         async with _get_session().post(f'https://{neuprint_server}/api/custom/custom', data=payload.json(), headers=headers) as resp:

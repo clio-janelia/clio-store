@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Local dev server launcher.
 
+Loads .env into the environment so config.py picks up DSG_URL etc.
 Without --certs: runs uvicorn with auto-reload (HTTP).
 With --certs <dir>: runs hypercorn with auto-reload, access logging to stdout,
 and TLS using <dir>/localhost+2.pem and <dir>/localhost+2-key.pem.
@@ -13,6 +14,10 @@ Usage:
 import argparse
 import os
 import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _envutil import load_env
 
 
 def main():
@@ -26,6 +31,10 @@ def main():
     parser.add_argument("--host", default="0.0.0.0")
     parser.add_argument("--port", default="8080")
     args = parser.parse_args()
+
+    # Load .env into the process environment (existing env vars win).
+    for key, value in load_env().items():
+        os.environ.setdefault(key, value)
 
     if args.certs:
         certfile = os.path.join(args.certs, "localhost+2.pem")

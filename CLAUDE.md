@@ -8,51 +8,58 @@ Clio Store is a FastAPI server for managing connectomics/EM (electron microscopy
 
 - **Framework**: FastAPI with **Pydantic v1** (1.10.x)
 - **Data stores**: Google Firestore, BigQuery, Cloud Storage
-- **Auth**: Google OAuth2 + FlyEM JWT, or DatasetGateway (when `DSG_URL` is set)
+- **Auth**: DatasetGateway (DSG) — `DSG_URL` is required
 - **Server**: Hypercorn (production, HTTP/2), Uvicorn (development)
-- **Language**: Python 3.12
+- **Language**: Python 3.12, dependencies via [pixi](https://pixi.sh)
 
 ## Development Commands
 
 ```bash
 # Install dependencies
-pip install -r requirements.txt
+pixi install
 
-# Run locally (development)
-uvicorn main:app --reload
+# Configure local .env (interactive; --use-env skips prompts for keys already set)
+pixi run setup
 
-# Run locally with HTTP/2 (matches production)
-hypercorn main:app --bind 0.0.0.0:8000 --reload
+# Run locally over plain HTTP (uvicorn, --reload)
+pixi run dev
 
-# Deploy to Cloud Run
-gcloud run deploy clio-store --source . --region us-east4 --allow-unauthenticated --use-http2
+# Run locally over HTTPS with HTTP/2 + access logs (hypercorn, --reload)
+pixi run dev --certs ../certs
 
-# Local auth bypass (legacy mode only): set TEST_USER=<email> to skip token validation
+# Run tests
+pixi run pytest    # or: pytest
+
+# Deploy to Cloud Run (interactive; --dry-run to preview)
+pixi run deploy
 ```
 
-No test suite, linter config, or CI/CD pipeline exists in this repo.
+`pixi run dev` reads `.env` and execs uvicorn (or hypercorn with TLS when
+`--certs DIR` is given, expecting `DIR/localhost+2.pem` and
+`DIR/localhost+2-key.pem` from mkcert). See README.md for the mkcert setup.
+
+A pytest suite lives under `tests/` (DSG auth integration). No linter or
+CI/CD pipeline is configured.
 
 ## Architecture
 
 ### Core Files
 
-- `main.py` — Route wiring; includes all service routers at `/v2/` and `/test/` prefixes
-- `config.py` — Environment variables and Firestore collection name constants (imported via `from config import *`)
-- `dependencies.py` — `User` model, `Dataset` model, `UserCache`, `DatasetCache`, auth middleware, `get_user` dependency, and the FastAPI `app` instance
+- `main.py` — Route wiring; mounts service routers at `/v2/` and `/test/`. The DSG browser-auth router (`services/auth.py`) is mounted at the root (`/login`, `/profile`, `/logout`).
+- `config.py` — Env var constants and Firestore collection names (imported via `from config import *`). Exits at import time if `DSG_URL` isn't set.
+- `dependencies.py` — `User` model, `Dataset` model, `DatasetCache`, DSG auth (`_get_user_from_dsg`, `_dsg_group_members`), `get_user` dependency, and the FastAPI `app` instance with CORS middleware.
 
 ### Auth Flow
 
-`oauth2_scheme` → `get_user_from_token(request, token)` → either:
-1. **DatasetGateway** (if `DSG_URL` is set): `_get_user_from_dsg()` calls `{DSG_URL}/api/v1/user/cache`, maps response to `User`
-2. **Legacy** (default): `_get_user_from_legacy()` tries FlyEM JWT first (if `FLYEM_SECRET` set), then Google OAuth2 ID token, then `TEST_USER` fallback
+`oauth2_scheme` → `get_user_from_token(request, token)` → `_get_user_from_dsg(...)` calls `{DSG_URL}/api/v1/user/cache` and maps the response to a `User`. There is no legacy/Firestore auth path — `DSG_URL` is required.
 
-Token resolution in DSG mode checks: Bearer header → `dsg_token` cookie → `dsg_token` query param.
+Token resolution checks: `Authorization: Bearer` header → `dsg_token` cookie → `dsg_token` query param.
 
-See `docs/dsg-integration.md` for the full DatasetGateway integration design, including permission mapping, the `public` flag interaction, group members, user management endpoint behavior, token generation proxying, and migration steps.
+See `docs/dsg-integration.md` for the full DatasetGateway integration design (permission mapping, the `public` flag interaction, group members, user management endpoint behavior, token generation proxying). `docs/DatasetGatewayIntegration.md` covers frontend/browser-auth patterns.
 
 ### DatasetGateway Permission Mapping
 
-DatasetGateway `view`/`edit` permissions map to clio-store roles:
+DatasetGateway → clio-store roles:
 - `admin: true` → `global_roles: {"admin"}`
 - `permissions_v2[ds]` has `"view"` → `datasets[ds]` has `"clio_general"`
 - `permissions_v2[ds]` has `"edit"` → `datasets[ds]` has `"clio_write"`
@@ -60,10 +67,11 @@ DatasetGateway `view`/`edit` permissions map to clio-store roles:
 
 Access is granted from **two sources**: DatasetGateway permissions AND the Firestore `public` flag. A user with no DSG permissions can still access a public dataset. The `public` flag stays in Firestore (not DSG) and is loaded by `DatasetCache`.
 
-When `DSG_URL` is set:
-- `GET/POST/DELETE /v2/users` returns 501 (manage users via DatasetGateway instead)
+DSG-related endpoints:
+- `GET/POST/DELETE /v2/users` → 501 (manage users via DatasetGateway instead)
 - `POST /v2/server/token` proxies to `{DSG_URL}/api/v1/create_token`
 - Group membership is fetched from `{DSG_URL}/api/v1/groups/{name}/members`
+- `/login`, `/profile`, `/logout` (top-level, not under `/v2/`) handle the browser-auth redirect dance
 
 ### Role System
 
@@ -75,9 +83,8 @@ When `DSG_URL` is set:
 
 ### Caching
 
-- `DatasetCache` in `dependencies.py` — always initialized; refreshes from Firestore every 600s
-- `UserCache` in `dependencies.py` — only initialized in legacy mode (`DSG_URL` unset); set to `None` when DSG is enabled
-- `_dsg_user_cache` and `_dsg_group_members_cache` — in-memory dicts used only in DatasetGateway mode, 600s TTL
+- `DatasetCache` in `dependencies.py` — initialized at startup; refreshes from Firestore every 600s
+- `_dsg_user_cache` and `_dsg_group_members_cache` — in-memory dicts, 600s TTL, keyed by token / group name
 - `DocumentCache` in `stores/cache.py` — per-document caching with 120s staleness threshold
 
 ### Data Access
@@ -101,7 +108,9 @@ app.include_router(svc.router, prefix=f"{URL_PREFIX}/v2/endpoint", dependencies=
 app.include_router(svc.router, prefix=f"{URL_PREFIX}/test/endpoint", dependencies=[Depends(get_user)], include_in_schema=False)
 ```
 
-The `volumes` router is the only one without `Depends(get_user)`.
+Exceptions:
+- `volumes` is mounted without `Depends(get_user)`.
+- `services/auth.py` is mounted only once at the root (no `/v2/` or `/test/` prefix), since browser-facing OAuth routes don't follow the API versioning convention.
 
 ### Adding a New Service
 
@@ -124,22 +133,22 @@ Routes typically define both with and without trailing slash. Auth errors use `H
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `OWNER` | Email that automatically gets global `admin` privileges |
-| `DSG_URL` | DatasetGateway URL; when set, auth delegates to DatasetGateway |
-| `FLYEM_SECRET` | Secret for FlyEM JWT token validation |
-| `TEST_USER` | When set, bypasses auth and uses this email |
-| `URL_PREFIX` | Prefix before all API endpoints (default: empty) |
-| `ALLOWED_ORIGINS` | CORS allowed origins (default: `*`) |
-| `GOOGLE_APPLICATION_CREDENTIALS` | GCP service account credentials (local dev) |
-| `SIG_BUCKET` | Cloud Storage bucket for image signature queries |
-| `NEUPRINT_APPLICATION_CREDENTIALS` | Credentials for neuprint service |
-| `TRANSFER_FUNC` | Cloud Function URL for image transfer |
-| `TRANSFER_DEST` | Destination for image transfers |
-| `CLIO_SUBVOL_BUCKET` | Cloud Storage bucket for subvolume edits |
-| `CLIO_SUBVOL_WIDTH` | Subvolume width (default: 256) |
+Local dev reads these from `.env` (managed by `pixi run setup`).
+See `.env.example` for the full list and defaults.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DSG_URL` | yes | DatasetGateway base URL — all auth/authz delegates here |
+| `OWNER` | yes | Email that automatically gets global `admin` privileges |
+| `URL_PREFIX` |  | Prefix before all API endpoints (default: empty) |
+| `ALLOWED_ORIGINS` |  | CORS allowed origins (default: `*`) |
+| `SIG_BUCKET` |  | Cloud Storage bucket for image signature queries |
+| `TRANSFER_FUNC` |  | Cloud Function URL for image transfer |
+| `TRANSFER_DEST` |  | Destination cache for image transfers |
+| `GOOGLE_APPLICATION_CREDENTIALS` |  | GCP credentials path (local dev only — Cloud Run uses workload identity) |
+| `CLIO_SUBVOL_BUCKET` |  | Cloud Storage bucket for subvolume edits |
+| `CLIO_SUBVOL_WIDTH` |  | Subvolume width (default: 256) |
 
 ## Deployment Notes
 
-Production uses Hypercorn for HTTP/2 support, which is required to avoid Google Cloud Run's 32 MiB response size limit on HTTP/1. The Dockerfile runs on port 8080 by default.
+Production uses Hypercorn for HTTP/2 support, which is required to avoid Google Cloud Run's 32 MiB response size limit on HTTP/1. The Dockerfile runs on port 8080 by default. `scripts/deploy.py` (`pixi run deploy`) prompts for deploy-time settings, persists them to `.env`, and runs `gcloud run deploy --use-http2` with the runtime env vars passed via `--set-env-vars`.

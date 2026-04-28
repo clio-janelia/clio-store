@@ -102,7 +102,7 @@ def get_datasets(templates: bool = False, current_user: User = Depends(get_user)
         datasets_out = {}
         for dataset in collection.stream():
             dataset_info = dataset.to_dict()
-            if public_dataset(dataset.id) or current_user.can_read(dataset.id):
+            if public_dataset(dataset.id) or current_user.can_read_ignore_tos(dataset.id):
                 if templates:
                     datasets_out[dataset.id] = dataset_info
                 else:
@@ -129,4 +129,3 @@ def get_dataset(dataset: str, templates: bool = False, current_user: User = Depe
     except Exception as e:
         print(e)
         raise HTTPException(status_code=400, detail="error in retrieving datasets' metadata")
-

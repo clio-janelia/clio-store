@@ -7,7 +7,8 @@ These routes handle the OAuth redirect dance: /login redirects to DSG,
 Only registered when DSG_URL is set (see main.py).
 """
 
-from urllib.parse import quote
+from typing import Optional
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,11 +21,21 @@ router = APIRouter()
 
 
 @router.get('/login')
-async def login(redirect: str, request: Request):
+async def login(
+    redirect: str,
+    request: Request,
+    dataset: Optional[str] = None,
+    service: str = "clio",
+):
     """Redirect to DatasetGateway's OAuth authorize endpoint."""
     if not DSG_URL:
         raise HTTPException(status_code=404)
-    target = f"{DSG_URL}/api/v1/authorize?redirect={quote(redirect, safe='')}"
+    params = {"redirect": redirect}
+    if service:
+        params["service"] = service
+    if dataset:
+        params["dataset"] = dataset
+    target = f"{DSG_URL}/api/v1/authorize?{urlencode(params)}"
     return RedirectResponse(target, status_code=302)
 
 
@@ -37,6 +48,10 @@ async def profile(user: User = Depends(get_user)):
         "picture": user.picture,
         "global_roles": list(user.global_roles or []),
         "datasets": {ds: list(roles) for ds, roles in (user.datasets or {}).items()},
+        "datasets_ignore_tos": {
+            ds: list(roles) for ds, roles in (user.datasets_ignore_tos or {}).items()
+        },
+        "missing_tos": list(user.missing_tos or []),
         "groups": list(user.groups or []),
         # Tell the frontend we're in DSG mode and where user admin lives.
         # Frontend uses this to link out to DSG's admin UI for user management

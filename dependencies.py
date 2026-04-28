@@ -170,6 +170,8 @@ class User(BaseModel):
     disabled: Optional[bool] = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
+    datasets_ignore_tos: Optional[Dict[str, Set[str]]] = {}
+    missing_tos: Optional[List[Dict[str, Any]]] = []
     groups: Optional[Set[str]] = set()
 
     token: Optional[str] = None
@@ -194,6 +196,13 @@ class User(BaseModel):
         if dataset in datasets.public:
             return True
         dataset_roles = self.datasets.get(dataset, set())
+        read_roles = set(["clio_read", "clio_general", "clio_write"])
+        return read_roles & dataset_roles
+
+    def can_read_ignore_tos(self, dataset: str = "") -> bool:
+        if self.can_read(dataset):
+            return True
+        dataset_roles = self.datasets_ignore_tos.get(dataset, set())
         read_roles = set(["clio_read", "clio_general", "clio_write"])
         return read_roles & dataset_roles
 
@@ -243,15 +252,9 @@ def _resolve_token(request: Request, token: str) -> str:
     return None
 
 
-def _map_dsg_to_user(dsg_data: dict) -> User:
-    """Map DatasetGateway /api/v1/user/cache response to clio-store User model."""
-    global_roles = set()
+def _map_dsg_permissions_to_clio_roles(dsg_permissions: dict) -> Dict[str, Set[str]]:
     ds_roles = {}
-
-    if dsg_data.get("admin"):
-        global_roles.add("admin")
-
-    for ds_name, perms in dsg_data.get("permissions_v2", {}).items():
+    for ds_name, perms in dsg_permissions.items():
         roles = set()
         if "view" in perms:
             roles.add("clio_general")
@@ -259,9 +262,27 @@ def _map_dsg_to_user(dsg_data: dict) -> User:
             roles.add("clio_write")
         if roles:
             ds_roles[ds_name] = roles
+    return ds_roles
+
+
+def _map_dsg_to_user(dsg_data: dict) -> User:
+    """Map DatasetGateway /api/v1/user/cache response to clio-store User model."""
+    global_roles = set()
+
+    if dsg_data.get("admin"):
+        global_roles.add("admin")
+
+    ds_roles = _map_dsg_permissions_to_clio_roles(
+        dsg_data.get("permissions_v2", {})
+    )
+    ds_roles_ignore_tos = _map_dsg_permissions_to_clio_roles(
+        dsg_data.get("permissions_v2_ignore_tos")
+        or dsg_data.get("permissions_v2", {})
+    )
 
     for ds_name in dsg_data.get("datasets_admin", []):
         ds_roles.setdefault(ds_name, set()).add("dataset_admin")
+        ds_roles_ignore_tos.setdefault(ds_name, set()).add("dataset_admin")
 
     email = dsg_data["email"]
     if OWNER and email == OWNER:
@@ -274,6 +295,8 @@ def _map_dsg_to_user(dsg_data: dict) -> User:
         picture=dsg_data.get("picture_url"),
         global_roles=global_roles,
         datasets=ds_roles,
+        datasets_ignore_tos=ds_roles_ignore_tos,
+        missing_tos=dsg_data.get("missing_tos", []),
         groups=set(dsg_data.get("groups", [])),
     )
 
@@ -288,13 +311,17 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # /profile drives browser redirects after TOS acceptance. Force a fresh DSG
+    # read there so users do not loop on stale missing_tos state.
+    force_refresh = request.url.path == "/profile"
+
     cached = _dsg_user_cache.get(resolved_token)
-    if cached and time.time() - cached[0] < USER_REFRESH_SECS:
+    if not force_refresh and cached and time.time() - cached[0] < USER_REFRESH_SECS:
         return cached[1]
 
     try:
         resp = httpx.get(
-            f"{DSG_URL}/api/v1/user/cache",
+            f"{DSG_URL}/api/v1/user/cache?service=clio",
             headers={"Authorization": f"Bearer {resolved_token}"},
             timeout=10,
         )

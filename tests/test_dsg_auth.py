@@ -25,7 +25,7 @@ from dependencies import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_request(*, cookies=None, query_params=None):
+def _make_request(*, cookies=None, query_params=None, path="/"):
     """Build a minimal Starlette Request for unit testing."""
     headers = []
     if cookies:
@@ -37,7 +37,7 @@ def _make_request(*, cookies=None, query_params=None):
     scope = {
         "type": "http",
         "method": "GET",
-        "path": "/",
+        "path": path,
         "query_string": qs,
         "headers": headers,
     }
@@ -45,6 +45,7 @@ def _make_request(*, cookies=None, query_params=None):
 
 
 def _dsg_response(*, email="user@test.com", admin=False, permissions_v2=None,
+                  permissions_v2_ignore_tos=None, missing_tos=None,
                   datasets_admin=None, groups=None, name="Test User"):
     """Build a DSG /api/v1/user/cache response dict."""
     return {
@@ -52,6 +53,8 @@ def _dsg_response(*, email="user@test.com", admin=False, permissions_v2=None,
         "name": name,
         "admin": admin,
         "permissions_v2": permissions_v2 or {},
+        "permissions_v2_ignore_tos": permissions_v2_ignore_tos or {},
+        "missing_tos": missing_tos or [],
         "datasets_admin": datasets_admin or [],
         "groups": groups or [],
     }
@@ -75,6 +78,17 @@ class TestMapDsgToUser:
             permissions_v2={"ds1": ["view"]},
         ))
         assert "clio_general" in user.datasets["ds1"]
+
+    def test_ignore_tos_permissions_are_mapped_separately(self):
+        user = _map_dsg_to_user(_dsg_response(
+            permissions_v2={"accepted": ["view"]},
+            permissions_v2_ignore_tos={"accepted": ["view"], "blocked": ["view"]},
+            missing_tos=[{"dataset_name": "blocked", "tos_id": 12}],
+        ))
+        assert "accepted" in user.datasets
+        assert "blocked" not in user.datasets
+        assert "blocked" in user.datasets_ignore_tos
+        assert user.missing_tos == [{"dataset_name": "blocked", "tos_id": 12}]
 
     def test_edit_permission_maps_to_clio_write(self):
         user = _map_dsg_to_user(_dsg_response(
@@ -115,6 +129,8 @@ class TestMapDsgToUser:
         assert user.email == "a@b.com"
         assert user.global_roles == set()
         assert user.datasets == {}
+        assert user.datasets_ignore_tos == {}
+        assert user.missing_tos == []
 
     def test_unknown_permissions_ignored(self):
         user = _map_dsg_to_user(_dsg_response(
@@ -163,6 +179,27 @@ class TestGetUserFromDsg:
         with patch("dependencies.httpx.get", return_value=mock_resp):
             user = _get_user_from_dsg(req, "valid-token")
         assert user.email == "ok@test.com"
+
+    def test_calls_service_aware_user_cache(self):
+        req = _make_request()
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _dsg_response(email="ok@test.com")
+
+        with patch("dependencies.httpx.get", return_value=mock_resp) as mock_get:
+            _get_user_from_dsg(req, "valid-token")
+        assert mock_get.call_args.args[0] == "http://dsg.test/api/v1/user/cache?service=clio"
+
+    def test_profile_path_bypasses_cached_user(self):
+        req = _make_request(path="/profile")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _dsg_response(email="fresh@test.com")
+
+        with patch("dependencies.httpx.get", return_value=mock_resp) as mock_get:
+            _get_user_from_dsg(req, "profile-token")
+            _get_user_from_dsg(req, "profile-token")
+        assert mock_get.call_count == 2
 
     def test_no_token_raises_401(self):
         req = _make_request()
@@ -306,6 +343,16 @@ class TestUserPermissions:
         user = User(email="u@test.com", name="U", datasets={"ds1": {"clio_general"}})
         assert user.can_read("ds1")
 
+    def test_can_read_ignore_tos_uses_granted_dataset_roles(self):
+        user = User(
+            email="u@test.com",
+            name="U",
+            datasets={},
+            datasets_ignore_tos={"blocked": {"clio_general"}},
+        )
+        assert not user.can_read("blocked")
+        assert user.can_read_ignore_tos("blocked")
+
     def test_cannot_read_without_role(self):
         user = User(email="u@test.com", name="U")
         assert not user.can_read("ds1")
@@ -396,6 +443,7 @@ class TestAuthRoutes:
             email="user@test.com", name="Test User",
             global_roles={"clio_general"},
             datasets={"ds1": {"clio_general", "clio_write"}},
+            datasets_ignore_tos={"ds1": {"clio_general", "clio_write"}},
             groups={"grp1"},
         )
         app.dependency_overrides[get_user] = lambda: self._user
@@ -413,6 +461,18 @@ class TestAuthRoutes:
         assert location.startswith("http://dsg.test/api/v1/authorize")
         assert "redirect=" in location
         assert "clio.janelia.org" in location
+        assert "service=clio" in location
+
+    def test_login_forwards_dataset_context_to_dsg(self):
+        resp = self.client.get(
+            "/login?redirect=https://clio.janelia.org/%3Fdataset%3Dfanc&dataset=fanc",
+            follow_redirects=False,
+        )
+        assert resp.status_code == 302
+        location = resp.headers["location"]
+        assert location.startswith("http://dsg.test/api/v1/authorize")
+        assert "service=clio" in location
+        assert "dataset=fanc" in location
 
     def test_login_requires_redirect_param(self):
         resp = self.client.get("/login")
@@ -428,6 +488,8 @@ class TestAuthRoutes:
         assert "ds1" in data["datasets"]
         assert "clio_general" in data["datasets"]["ds1"]
         assert "clio_write" in data["datasets"]["ds1"]
+        assert "ds1" in data["datasets_ignore_tos"]
+        assert data["missing_tos"] == []
         assert "grp1" in data["groups"]
 
     def test_profile_empty_roles(self):
@@ -440,13 +502,15 @@ class TestAuthRoutes:
         assert data["email"] == "empty@test.com"
         assert data["global_roles"] == []
         assert data["datasets"] == {}
+        assert data["datasets_ignore_tos"] == {}
+        assert data["missing_tos"] == []
         assert data["groups"] == []
 
-    def test_logout_redirects_to_dsg(self):
+    def test_logout_redirects_to_requested_url(self):
         resp = self.client.post("/logout", follow_redirects=False)
         assert resp.status_code == 302
         location = resp.headers["location"]
-        assert location == "http://dsg.test/api/v1/logout"
+        assert location == "/"
 
 
 # ===========================================================================

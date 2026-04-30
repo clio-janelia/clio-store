@@ -136,7 +136,9 @@ clio-store delegates all authentication and authorization to DatasetGateway.
 - Tokens can be passed via `Authorization: Bearer` header, `dsg_token` cookie,
   or `?dsg_token=` query parameter.
 - Get a long-lived API token via `POST /v2/server/token` with any valid
-  short-lived token — it proxies to DatasetGateway's token creation endpoint.
+  short-lived token — it proxies to DatasetGateway's
+  `GET /api/v1/long_lived_token`, which returns the same stable token on
+  every call so the displayed token does not change between sessions.
 - User and role management lives entirely in DatasetGateway's web UI; the
   `/v2/users` endpoints return HTTP 501.
 - Per-dataset roles map to DatasetGateway permissions: `view` →

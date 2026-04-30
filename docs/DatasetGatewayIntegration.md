@@ -38,8 +38,8 @@ Browser                    clio-store                  DSG
   |<-- { email, roles, ... } -|                         |
   |                           |                         |
   |   POST /v2/server/token ->|                         |
-  |   (cookie: dsg_token)     |-- POST create_token --->|
-  |                           |<-- bearer_token --------|
+  |   (cookie: dsg_token)     |-- GET long_lived_token->|
+  |                           |<-- stable bearer_token -|
   |<-- bearer_token ----------|                         |
   |                           |                         |
   |   store token, render app |                         |

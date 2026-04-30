@@ -20,11 +20,16 @@ async def refresh_caches(user: User = Depends(get_user)):
 @router.post('/token')
 @router.post('/token/', include_in_schema=False)
 async def get_token(request: Request, user: User = Depends(get_user)):
-    """Return a long-lived token by proxying to DatasetGateway."""
+    """Return the stable long-lived token by proxying to DatasetGateway.
+
+    DSG's long_lived_token endpoint is idempotent: it returns the same
+    token row for the same user on every call, so the displayed token
+    stays stable across browser refreshes and frontend reloads.
+    """
     token = _resolve_token(request, request.headers.get("Authorization", "").removeprefix("Bearer ").strip())
     try:
-        resp = httpx.post(
-            f"{DSG_URL}/api/v1/create_token",
+        resp = httpx.get(
+            f"{DSG_URL}/api/v1/long_lived_token",
             headers={"Authorization": f"Bearer {token}"},
             timeout=10,
         )

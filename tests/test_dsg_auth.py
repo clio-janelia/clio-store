@@ -412,18 +412,22 @@ class TestDsgEndpoints:
     def test_token_proxy_success(self):
         mock_resp = MagicMock()
         mock_resp.status_code = 200
-        mock_resp.json.return_value = {"token": "new-tok"}
+        mock_resp.json.return_value = {"token": "stable-tok"}
 
-        with patch("services.server.httpx.post", return_value=mock_resp):
+        with patch("services.server.httpx.get", return_value=mock_resp) as mock_get:
             resp = self.client.post(
                 "/v2/server/token",
                 headers={"Authorization": "Bearer orig-tok"},
             )
         assert resp.status_code == 200
-        assert resp.json() == {"token": "new-tok"}
+        assert resp.json() == {"token": "stable-tok"}
+        # The proxy must call DSG's long_lived_token endpoint, not create_token,
+        # so that the displayed token is stable across calls.
+        called_url = mock_get.call_args[0][0]
+        assert called_url.endswith("/api/v1/long_lived_token")
 
     def test_token_proxy_connection_error(self):
-        with patch("services.server.httpx.post", side_effect=httpx.ConnectError("fail")):
+        with patch("services.server.httpx.get", side_effect=httpx.ConnectError("fail")):
             resp = self.client.post(
                 "/v2/server/token",
                 headers={"Authorization": "Bearer tok"},

@@ -69,7 +69,7 @@ Access is granted from **two sources**: DatasetGateway permissions AND the Fires
 
 DSG-related endpoints:
 - `GET/POST/DELETE /v2/users` → 501 (manage users via DatasetGateway instead)
-- `POST /v2/server/token` proxies to `{DSG_URL}/api/v1/create_token`
+- `POST /v2/server/token` proxies to `GET {DSG_URL}/api/v1/long_lived_token` — DSG returns the same stable token on every call so the displayed token does not churn
 - Group membership is fetched from `{DSG_URL}/api/v1/groups/{name}/members`
 - `/login`, `/profile`, `/logout` (top-level, not under `/v2/`) handle the browser-auth redirect dance
 

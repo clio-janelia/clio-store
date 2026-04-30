@@ -131,10 +131,17 @@ DatasetGateway's web UI or Django admin panel.
 ## Token generation
 
 When `DSG_URL` is set, `POST /v2/server/token` proxies to DatasetGateway's
-`POST /api/v1/create_token` endpoint, returning a DatasetGateway API key
-instead of a FlyEM JWT. Existing clients that call this endpoint
-continue to work -- they receive a `dsg_token` that works across all
-DatasetGateway-integrated services.
+`GET /api/v1/long_lived_token` endpoint, returning a DatasetGateway API
+key instead of a FlyEM JWT. The DSG endpoint is idempotent: on first call
+it creates the user's stable long-lived `APIKey` row (description
+`Default long-lived API token`, no expiry) and on every subsequent call
+it returns that same token. This stability is important — users paste
+the displayed token into scripts and configuration files, so it must not
+change on browser refresh, localStorage miss, or frontend reload.
+
+Existing clients that call this endpoint continue to work — they
+receive a `dsg_token` that works across all DatasetGateway-integrated
+services.
 
 ---
 

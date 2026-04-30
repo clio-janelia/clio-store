@@ -104,8 +104,8 @@ This project pins `pydantic==1.10.x`. Do NOT use v2 APIs:
 
 Every service router is mounted twice in `main.py`:
 ```python
-app.include_router(svc.router, prefix=f"{URL_PREFIX}/v2/endpoint", dependencies=[Depends(get_user)])
-app.include_router(svc.router, prefix=f"{URL_PREFIX}/test/endpoint", dependencies=[Depends(get_user)], include_in_schema=False)
+app.include_router(svc.router, prefix="/v2/endpoint", dependencies=[Depends(get_user)])
+app.include_router(svc.router, prefix="/test/endpoint", dependencies=[Depends(get_user)], include_in_schema=False)
 ```
 
 Exceptions:
@@ -140,7 +140,6 @@ See `.env.example` for the full list and defaults.
 |----------|----------|-------------|
 | `DSG_URL` | yes | DatasetGateway base URL — all auth/authz delegates here |
 | `OWNER` | yes | Email that automatically gets global `admin` privileges |
-| `URL_PREFIX` |  | Prefix before all API endpoints (default: empty) |
 | `ALLOWED_ORIGINS` |  | CORS allowed origins (default: `*`) |
 | `SIG_BUCKET` |  | Cloud Storage bucket for image signature queries |
 | `TRANSFER_FUNC` |  | Cloud Function URL for image transfer |

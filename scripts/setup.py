@@ -22,7 +22,6 @@ from _envutil import ENV_FILE, collect_values, load_env, save_env
 RUNTIME_SETTINGS: list[tuple[str, str, str, bool]] = [
     ("DSG_URL", "DatasetGateway URL (DSG_URL)", "", False),
     ("OWNER", "Admin email (OWNER)", "", False),
-    ("URL_PREFIX", "API URL prefix (URL_PREFIX)", "", True),
     ("ALLOWED_ORIGINS", "CORS allowed origins (ALLOWED_ORIGINS)", "*", True),
     ("SIG_BUCKET", "Image-signature GCS bucket (SIG_BUCKET)", "", True),
     ("TRANSFER_FUNC", "Image transfer Cloud Function URL (TRANSFER_FUNC)", "", True),

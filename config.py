@@ -4,9 +4,6 @@ import sys
 # Allowed origins for CORS handling.
 ALLOWED_ORIGINS = os.environ.get("ALLOWED_ORIGINS", "*")
 
-# Prefix to add before the actual API endpoints
-URL_PREFIX = os.environ.get("URL_PREFIX", "")
-
 # Email that automatically receives global "admin" privileges.
 OWNER = os.environ.get("OWNER", None)
 

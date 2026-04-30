@@ -79,7 +79,7 @@ Mount auth router at top level (not under `/v2/`), without router-level `Depends
 ```python
 if DSG_URL:
     from services import auth
-    app.include_router(auth.router, prefix=f"{URL_PREFIX}")
+    app.include_router(auth.router)
 ```
 
 ### Modify: `dependencies.py` — CORS credentials support

@@ -116,8 +116,6 @@ they're set on the service — `pixi run deploy` injects them via `--set-env-var
 
 **Optional**
 
-- `URL_PREFIX` — prefix added to every API endpoint, e.g. `"/api"` →
-  `/api/v2/annotations`.
 - `ALLOWED_ORIGINS` — CORS `Access-Control-Allow-Origin` value. `*` (default)
   or a comma-separated list of origins.
 - `SIG_BUCKET` — GCS bucket holding image signatures (powers `/v2/signatures`).

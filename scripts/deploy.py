@@ -29,7 +29,6 @@ DEPLOY_SETTINGS: list[tuple[str, str, str, bool]] = [
 SERVICE_ENV_VARS: list[tuple[str, str, str, bool]] = [
     ("DSG_URL", "DatasetGateway URL (DSG_URL)", "", False),
     ("OWNER", "Admin email (OWNER)", "", False),
-    ("URL_PREFIX", "API URL prefix (URL_PREFIX)", "", True),
     ("ALLOWED_ORIGINS", "CORS allowed origins (ALLOWED_ORIGINS)", "*", True),
     ("SIG_BUCKET", "Signature query GCS bucket (SIG_BUCKET)", "", True),
     ("TRANSFER_FUNC", "Transfer cloud run location (TRANSFER_FUNC)", "", True),
@@ -85,6 +84,19 @@ def get_service_url(service_name: str, region: str, project_id: str) -> str | No
     return None
 
 
+def get_service_env_var_names(service_name: str, region: str, project_id: str) -> set[str]:
+    """Names of env vars currently set on the live Cloud Run service. Empty if service doesn't exist."""
+    result = run_cmd(
+        ["gcloud", "run", "services", "describe", service_name,
+         f"--region={region}", f"--project={project_id}",
+         "--format=value(spec.template.spec.containers[0].env[].name)"],
+        check=False, silent=True,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        return set()
+    return {n for n in result.stdout.strip().replace("\n", ";").split(";") if n}
+
+
 def main():
     parser = argparse.ArgumentParser(description="Deploy clio-store to Cloud Run")
     parser.add_argument("--dry-run", action="store_true",
@@ -129,15 +141,24 @@ def main():
         "--allow-unauthenticated",
         "--use-http2",
     ]
+    # --set-env-vars is destructive: it replaces all env vars on the service,
+    # so anything already set on the live revision but not listed here will
+    # be removed on this deploy.
     if env_var_pairs:
         deploy_cmd.append(f"--set-env-vars={','.join(env_var_pairs)}")
+
+    new_keys = {p.split("=", 1)[0] for p in env_var_pairs}
+    existing_keys = get_service_env_var_names(service, region, project)
+    removed_keys = sorted(existing_keys - new_keys)
 
     print(f"\n[3/3] Deploying to Cloud Run...")
     print(f"  Project: {project}")
     print(f"  Region:  {region}")
     print(f"  Service: {service}")
     if env_var_pairs:
-        print(f"  Env vars: {', '.join(p.split('=')[0] for p in env_var_pairs)}")
+        print(f"  Env vars set:     {', '.join(sorted(new_keys))}")
+    if removed_keys:
+        print(f"  Env vars removed: {', '.join(removed_keys)}")
     print()
 
     if args.dry_run:

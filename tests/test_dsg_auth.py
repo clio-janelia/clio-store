@@ -12,6 +12,9 @@ from dependencies import (
     _map_dsg_to_user,
     _resolve_token,
     _get_user_from_dsg,
+    _fetch_dsg_user,
+    _evict_other_user_tokens,
+    refresh_user,
     _dsg_group_members,
     _dsg_user_cache,
     _dsg_group_members_cache,
@@ -250,6 +253,107 @@ class TestGetUserFromDsg:
             )
             _get_user_from_dsg(req, "tok-expire")
             assert mock_get.call_count == 2
+
+    def test_profile_refresh_evicts_other_user_tokens(self):
+        """A forced /profile refresh must drop the same user's *other* cached
+        tokens (e.g. the long-lived Bearer used by /v2 calls), so a just-accepted
+        TOS isn't masked by a stale per-token entry."""
+        # Seed a stale entry for this user's long-lived token (e.g. populated by
+        # an earlier /v2 call before the TOS was accepted).
+        stale_user = _map_dsg_to_user(_dsg_response(email="same@test.com"))
+        stale_user.token = "long-lived-token"
+        _dsg_user_cache["long-lived-token"] = (time.time(), stale_user)
+        # An unrelated user's entry must survive.
+        other_user = _map_dsg_to_user(_dsg_response(email="other@test.com"))
+        other_user.token = "other-token"
+        _dsg_user_cache["other-token"] = (time.time(), other_user)
+
+        req = _make_request(path="/profile")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _dsg_response(email="same@test.com")
+
+        with patch("dependencies.httpx.get", return_value=mock_resp):
+            _get_user_from_dsg(req, "cookie-token")
+
+        assert "long-lived-token" not in _dsg_user_cache  # evicted
+        assert "cookie-token" in _dsg_user_cache           # this request's entry kept
+        assert "other-token" in _dsg_user_cache            # different user untouched
+
+    def test_non_profile_refresh_does_not_evict(self):
+        """A normal (non-/profile) refresh must not evict other tokens."""
+        stale_user = _map_dsg_to_user(_dsg_response(email="same@test.com"))
+        stale_user.token = "long-lived-token"
+        _dsg_user_cache["long-lived-token"] = (time.time(), stale_user)
+
+        req = _make_request(path="/v2/neuprint/fish2")
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _dsg_response(email="same@test.com")
+
+        with patch("dependencies.httpx.get", return_value=mock_resp):
+            _get_user_from_dsg(req, "cookie-token")
+
+        assert "long-lived-token" in _dsg_user_cache  # not a /profile path → no eviction
+
+
+# ===========================================================================
+# refresh_user / _evict_other_user_tokens
+# ===========================================================================
+
+class TestRefreshUser:
+    def test_refresh_user_rereads_and_updates_cache(self):
+        """refresh_user bypasses the cache and re-reads from DSG."""
+        stale = _map_dsg_to_user(_dsg_response(email="u@test.com", permissions_v2={}))
+        stale.token = "tok-refresh"
+        _dsg_user_cache["tok-refresh"] = (time.time(), stale)
+        assert not stale.has_role("clio_general", "fish2")
+
+        mock_resp = MagicMock()
+        mock_resp.status_code = 200
+        mock_resp.json.return_value = _dsg_response(
+            email="u@test.com", permissions_v2={"fish2": ["view"]}
+        )
+        with patch("dependencies.httpx.get", return_value=mock_resp) as mock_get:
+            fresh = refresh_user(stale)
+
+        assert mock_get.call_count == 1
+        assert fresh.has_role("clio_general", "fish2")          # TOS now reflected
+        assert _dsg_user_cache["tok-refresh"][1] is fresh        # cache updated
+
+    def test_refresh_user_no_token_is_noop(self):
+        user = _map_dsg_to_user(_dsg_response())
+        user.token = None
+        with patch("dependencies.httpx.get") as mock_get:
+            assert refresh_user(user) is user
+        mock_get.assert_not_called()
+
+    def test_refresh_user_falls_back_on_dsg_failure(self):
+        """If the re-read fails, return the original user so callers raise their
+        normal error rather than a confusing 401/502."""
+        user = _map_dsg_to_user(_dsg_response(email="u@test.com"))
+        user.token = "tok-fail"
+        with patch("dependencies.httpx.get", side_effect=httpx.ConnectError("fail")):
+            assert refresh_user(user) is user
+
+    def test_evict_other_user_tokens_matches_by_email(self):
+        a = _map_dsg_to_user(_dsg_response(email="a@test.com"))
+        a.token = "a1"
+        b = _map_dsg_to_user(_dsg_response(email="a@test.com"))
+        b.token = "a2"
+        c = _map_dsg_to_user(_dsg_response(email="c@test.com"))
+        c.token = "c1"
+        _dsg_user_cache.update({
+            "a1": (time.time(), a),
+            "a2": (time.time(), b),
+            "c1": (time.time(), c),
+        })
+
+        _evict_other_user_tokens("a@test.com", keep="a1")
+
+        assert "a1" in _dsg_user_cache   # kept
+        assert "a2" not in _dsg_user_cache  # same email, evicted
+        assert "c1" in _dsg_user_cache   # different email, untouched
 
 
 # ===========================================================================

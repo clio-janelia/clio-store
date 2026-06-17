@@ -3,7 +3,7 @@ import aiohttp
 from pydantic import BaseModel
 
 from config import *
-from dependencies import app, get_user, get_dataset, User
+from dependencies import app, get_user, get_dataset, User, refresh_user
 
 router = APIRouter()
 
@@ -31,7 +31,12 @@ class NeuprintRequest(BaseModel):
 @router.post('/{dataset}/', include_in_schema=False)
 async def post_neuprint_custom(dataset: str, payload: NeuprintRequest, user: User = Depends(get_user)):
     if not user.has_role("clio_general", dataset):
-        raise HTTPException(status_code=403, detail="user doesn't have authorization for this dataset")
+        # DSG reflects a just-accepted TOS immediately, but this token's cached
+        # permissions may lag (see dependencies._dsg_user_cache). Re-read once
+        # before denying so a fresh acceptance isn't a spurious 403.
+        user = refresh_user(user)
+        if not user.has_role("clio_general", dataset):
+            raise HTTPException(status_code=403, detail="user doesn't have authorization for this dataset")
 
     cur_dataset = get_dataset(dataset)
     if cur_dataset.neuprintHTTP:

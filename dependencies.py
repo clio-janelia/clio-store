@@ -301,24 +301,12 @@ def _map_dsg_to_user(dsg_data: dict) -> User:
     )
 
 
-def _get_user_from_dsg(request: Request, token: str) -> User:
-    """Authenticate via DatasetGateway and return a clio-store User."""
-    resolved_token = _resolve_token(request, token)
-    if not resolved_token:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+def _fetch_dsg_user(resolved_token: str) -> User:
+    """Fetch + map the DatasetGateway user for a token and refresh the cache.
 
-    # /profile drives browser redirects after TOS acceptance. Force a fresh DSG
-    # read there so users do not loop on stale missing_tos state.
-    force_refresh = request.url.path == "/profile"
-
-    cached = _dsg_user_cache.get(resolved_token)
-    if not force_refresh and cached and time.time() - cached[0] < USER_REFRESH_SECS:
-        return cached[1]
-
+    Always hits DSG (no cache read) and stores the result under
+    ``resolved_token``. Callers decide when a fresh read is warranted.
+    """
     try:
         resp = httpx.get(
             f"{DSG_URL}/api/v1/user/cache?service=clio",
@@ -342,6 +330,73 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
     user = _map_dsg_to_user(resp.json())
     user.token = resolved_token
     _dsg_user_cache[resolved_token] = (time.time(), user)
+    return user
+
+
+def _evict_other_user_tokens(email: str, keep: str) -> None:
+    """Drop a user's *other* cached token entries.
+
+    One user holds more than one token at a time: the ``dsg_token`` session
+    cookie (used by /profile) and the stable long-lived API token (used as a
+    Bearer by /v2 data calls such as /v2/neuprint). The cache is keyed by token,
+    so a forced refresh on one token leaves the others stale — which is how a
+    just-accepted TOS stays invisible to /v2 routes for up to USER_REFRESH_SECS,
+    even though DSG reflects the acceptance immediately. After a forced /profile
+    refresh, evict the user's other entries so the next request on any token
+    re-reads fresh.
+    """
+    stale = [
+        t for t, (_, u) in list(_dsg_user_cache.items())
+        if t != keep and getattr(u, "email", None) == email
+    ]
+    for t in stale:
+        _dsg_user_cache.pop(t, None)
+
+
+def refresh_user(user: User) -> User:
+    """Force a fresh DSG read for ``user``'s token, bypassing the cache.
+
+    Used on an authorization denial so a TOS the user just accepted (which DSG
+    reflects immediately, but this token's cached permission set may not yet
+    if the /profile refresh ran against a different token) doesn't produce a
+    spurious 403. Falls back to the original user if the refresh fails, so
+    callers still raise their normal error.
+    """
+    if not user.token:
+        return user
+    try:
+        return _fetch_dsg_user(user.token)
+    except HTTPException:
+        return user
+
+
+def _get_user_from_dsg(request: Request, token: str) -> User:
+    """Authenticate via DatasetGateway and return a clio-store User."""
+    resolved_token = _resolve_token(request, token)
+    if not resolved_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    # /profile drives browser redirects after TOS acceptance. Force a fresh DSG
+    # read there so users do not loop on stale missing_tos state.
+    force_refresh = request.url.path == "/profile"
+
+    cached = _dsg_user_cache.get(resolved_token)
+    if not force_refresh and cached and time.time() - cached[0] < USER_REFRESH_SECS:
+        return cached[1]
+
+    user = _fetch_dsg_user(resolved_token)
+
+    # A forced refresh only updates this token's entry, but the user's *other*
+    # tokens (e.g. the long-lived Bearer used by /v2/neuprint) would stay stale
+    # and keep denying access on a freshly accepted TOS. Evict them so the next
+    # call on any of the user's tokens re-reads.
+    if force_refresh:
+        _evict_other_user_tokens(user.email, keep=resolved_token)
+
     return user
 
 

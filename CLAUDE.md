@@ -45,13 +45,13 @@ CI/CD pipeline is configured.
 
 ### Core Files
 
-- `main.py` — Route wiring; mounts service routers at `/v2/` and `/test/`. The DSG browser-auth router (`services/auth.py`) is mounted at the root (`/login`, `/profile`, `/logout`).
+- `main.py` — Route wiring; mounts service routers at `/v2/` and `/test/`. The DSG browser-auth router (`services/auth.py`) is mounted at the root (`/login`, `/profile`, `/dataset-access`, `/logout`).
 - `config.py` — Env var constants and Firestore collection names (imported via `from config import *`). Exits at import time if `DSG_URL` isn't set.
 - `dependencies.py` — `User` model, `Dataset` model, `DatasetCache`, DSG auth (`_get_user_from_dsg`, `_dsg_group_members`), `get_user` dependency, and the FastAPI `app` instance with CORS middleware.
 
 ### Auth Flow
 
-`oauth2_scheme` → `get_user_from_token(request, token)` → `_get_user_from_dsg(...)` calls `{DSG_URL}/api/v1/user/cache` and maps the response to a `User`. There is no legacy/Firestore auth path — `DSG_URL` is required.
+`oauth2_scheme` → `get_user_from_token(request, token)` → `_get_user_from_dsg(...)` reads native identity from `{DSG_URL}/api/dsg/v1/user` and sends one native authorize batch for the Firestore ids in `DatasetCache`. A cached `User` is keyed by token for 600 seconds; `/profile` is force-fresh and evicts sibling tokens for the same email after a TOS return. There is no legacy/Firestore auth path — `DSG_URL` is required.
 
 Token resolution checks: `Authorization: Bearer` header → `dsg_token` cookie → `dsg_token` query param.
 
@@ -61,17 +61,20 @@ See `docs/dsg-integration.md` for the full DatasetGateway integration design (pe
 
 DatasetGateway → clio-store roles:
 - `admin: true` → `global_roles: {"admin"}`
-- `permissions_v2[ds]` has `"view"` → `datasets[ds]` has `"clio_general"`
-- `permissions_v2[ds]` has `"edit"` → `datasets[ds]` has `"clio_write"`
-- `datasets_admin` includes `ds` → `datasets[ds]` has `"dataset_admin"`
+- native `view` → `datasets[Firestore id]` has `"clio_general"`
+- native `edit` → `datasets[Firestore id]` has `"clio_write"`
+- native `admin` → `datasets[Firestore id]` has `"dataset_admin"`
+- native `manage` adds no role; unknown native role names pass through
+
+Firestore ids split at the first nonempty colon for the native decision (`fish2:v0.6` → `fish2`, `v0.6`); response echo keys are verified before mapping. Native `tos_required` lists a dataset only through `datasets_ignore_tos`, never grants data access, and never stores its URL. DSG admins short-circuit every Clio authorization check, including unknown Firestore-only datasets.
 
 Access is granted from **two sources**: DatasetGateway permissions AND the Firestore `public` flag. A user with no DSG permissions can still access a public dataset. The `public` flag stays in Firestore (not DSG) and is loaded by `DatasetCache`.
 
 DSG-related endpoints:
 - `GET/POST/DELETE /v2/users` → 501 (manage users via DatasetGateway instead)
 - `POST /v2/server/token` proxies to `GET {DSG_URL}/api/v1/long_lived_token` — DSG returns the same stable token on every call so the displayed token does not churn
-- Group membership is fetched from `{DSG_URL}/api/v1/groups/{name}/members`
-- `/login`, `/profile`, `/logout` (top-level, not under `/v2/`) handle the browser-auth redirect dance
+- Group membership is fetched from `{DSG_URL}/api/dsg/v1/groups/{name}/members`
+- `/login`, `/profile`, `/dataset-access`, `/logout` (top-level, not under `/v2/`) handle browser auth and selected-dataset decisions. `/dataset-access` is force-fresh, stateless, and passes a pending-TOS URL through opaque.
 
 ### Role System
 

@@ -171,7 +171,6 @@ class User(BaseModel):
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
     datasets_ignore_tos: Optional[Dict[str, Set[str]]] = {}
-    missing_tos: Optional[List[Dict[str, Any]]] = []
     groups: Optional[Set[str]] = set()
 
     token: Optional[str] = None
@@ -180,6 +179,8 @@ class User(BaseModel):
         fields = {"token": {"exclude": True}}
 
     def has_role(self, role: str, dataset: str = "") -> bool:
+        if self.is_admin():
+            return True
         if role in self.global_roles:
             return True
         if dataset == "":
@@ -191,6 +192,8 @@ class User(BaseModel):
         return False
 
     def can_read(self, dataset: str = "") -> bool:
+        if self.is_admin():
+            return True
         if "clio_general" in self.global_roles:
             return True
         if dataset in datasets.public:
@@ -200,6 +203,8 @@ class User(BaseModel):
         return read_roles & dataset_roles
 
     def can_read_ignore_tos(self, dataset: str = "") -> bool:
+        if self.is_admin():
+            return True
         if self.can_read(dataset):
             return True
         dataset_roles = self.datasets_ignore_tos.get(dataset, set())
@@ -207,6 +212,8 @@ class User(BaseModel):
         return read_roles & dataset_roles
 
     def can_write_own(self, dataset: str = "") -> bool:
+        if self.is_admin():
+            return True
         if "clio_general" in self.global_roles:
             return True
         if dataset in datasets.public:
@@ -216,12 +223,14 @@ class User(BaseModel):
         return write_roles & dataset_roles
 
     def can_write_others(self, dataset: str = "") -> bool:
+        if self.is_admin():
+            return True
         if "clio_write" in self.global_roles:
             return True
         return "clio_write" in self.datasets.get(dataset, set())
 
     def is_dataset_admin(self, dataset: str = "") -> bool:
-        if "admin" in self.global_roles:
+        if self.is_admin():
             return True
         dataset_roles = self.datasets.get(dataset, set())
         return set(["dataset_admin"]) & dataset_roles
@@ -252,82 +261,141 @@ def _resolve_token(request: Request, token: str) -> str:
     return None
 
 
-def _map_dsg_permissions_to_clio_roles(dsg_permissions: dict) -> Dict[str, Set[str]]:
-    ds_roles = {}
-    for ds_name, perms in dsg_permissions.items():
-        roles = set()
-        if "view" in perms:
-            roles.add("clio_general")
-        if "edit" in perms:
-            roles.add("clio_write")
-        if roles:
-            ds_roles[ds_name] = roles
-    return ds_roles
+def _dsg_entry_for_dataset_id(dataset_id: str) -> Dict[str, str]:
+    """Turn a Firestore dataset id into the native DSG decision vocabulary."""
+    if ":" in dataset_id:
+        name, version = dataset_id.split(":", 1)
+        if name and version:
+            return {"name": name, "version": version, "permission": "view"}
+    return {"name": dataset_id, "permission": "view"}
 
 
-def _map_dsg_to_user(dsg_data: dict) -> User:
-    """Map DatasetGateway /api/v1/user/cache response to clio-store User model."""
-    global_roles = set()
+def _map_dsg_roles_to_clio_roles(dsg_roles: Any) -> Set[str]:
+    """Map a DSG-native decision's roles to clio's preserved User interface."""
+    clio_roles = set()
+    for role in dsg_roles or []:
+        if role == "view":
+            clio_roles.add("clio_general")
+        elif role == "edit":
+            clio_roles.add("clio_write")
+        elif role == "admin":
+            clio_roles.add("dataset_admin")
+        elif role != "manage":
+            clio_roles.add(role)
+    return clio_roles
 
-    if dsg_data.get("admin"):
-        global_roles.add("admin")
 
-    ds_roles = _map_dsg_permissions_to_clio_roles(
-        dsg_data.get("permissions_v2", {})
+def _auth_service_error(error: Exception) -> HTTPException:
+    print(f"DatasetGateway request failed: {error}")
+    return HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail="Auth service unavailable",
     )
-    ds_roles_ignore_tos = _map_dsg_permissions_to_clio_roles(
-        dsg_data.get("permissions_v2_ignore_tos")
-        or dsg_data.get("permissions_v2", {})
+
+
+def _credentials_error(detail: str = "Could not validate credentials") -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail=detail,
+        headers={"WWW-Authenticate": "Bearer"},
     )
 
-    for ds_name in dsg_data.get("datasets_admin", []):
-        ds_roles.setdefault(ds_name, set()).add("dataset_admin")
-        ds_roles_ignore_tos.setdefault(ds_name, set()).add("dataset_admin")
 
-    email = dsg_data["email"]
+def _fetch_dsg_identity(resolved_token: str) -> Dict[str, Any]:
+    """Fetch an email-bearing principal from DSG's native identity endpoint."""
+    try:
+        resp = httpx.get(
+            f"{DSG_URL}/api/dsg/v1/user",
+            headers={"Authorization": f"Bearer {resolved_token}"},
+            timeout=10,
+        )
+    except httpx.RequestError as error:
+        raise _auth_service_error(error)
+
+    if resp.status_code != 200:
+        raise _credentials_error()
+
+    identity = resp.json()
+    if not isinstance(identity, dict):
+        raise _auth_service_error(ValueError("invalid native identity response"))
+    if identity.get("email") is None:
+        raise _credentials_error("Dedicated service accounts cannot use clio-store")
+    return identity
+
+
+def _fetch_dsg_decisions(
+    resolved_token: str, entries: List[Dict[str, str]], return_url: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Fetch and correlate ordered native DSG authorization decisions."""
+    payload: Dict[str, Any] = {"service": "clio", "entries": entries}
+    if return_url is not None:
+        payload["return_url"] = return_url
+    try:
+        resp = httpx.post(
+            f"{DSG_URL}/api/dsg/v1/authorize",
+            json=payload,
+            headers={"Authorization": f"Bearer {resolved_token}"},
+            timeout=10,
+        )
+    except httpx.RequestError as error:
+        raise _auth_service_error(error)
+
+    if resp.status_code != 200:
+        raise _credentials_error()
+
+    body = resp.json()
+    decisions = body.get("entries") if isinstance(body, dict) else None
+    if not isinstance(decisions, list) or len(decisions) != len(entries):
+        raise _auth_service_error(ValueError("native authorization response length mismatch"))
+
+    for entry, decision in zip(entries, decisions):
+        if not isinstance(decision, dict) or (
+            decision.get("name"), decision.get("version")
+        ) != (entry.get("name"), entry.get("version")):
+            raise _auth_service_error(ValueError("native authorization response correlation mismatch"))
+    return decisions
+
+
+def _build_user(
+    identity: Dict[str, Any], dataset_ids: List[str], decisions: List[Dict[str, Any]],
+) -> User:
+    """Build clio's stable User interface from native DSG identity and decisions."""
+    global_roles = {"admin"} if identity.get("admin") else set()
+    email = identity["email"]
     if OWNER and email == OWNER:
         global_roles.add("admin")
 
-    # DatasetGateway's /api/v1/user/cache returns the avatar as `picture_url`.
+    dataset_roles: Dict[str, Set[str]] = {}
+    dataset_roles_ignore_tos: Dict[str, Set[str]] = {}
+    for dataset_id, decision in zip(dataset_ids, decisions):
+        roles = _map_dsg_roles_to_clio_roles(decision.get("roles"))
+        decision_type = decision.get("decision")
+        if decision_type == "allow":
+            dataset_roles[dataset_id] = roles
+            dataset_roles_ignore_tos[dataset_id] = roles
+        elif decision_type == "tos_required":
+            dataset_roles_ignore_tos[dataset_id] = roles
+        elif decision_type == "service_eval":
+            print(f"DSG requires service evaluation for dataset {dataset_id}")
+
     return User(
         email=email,
-        name=dsg_data.get("name", ""),
-        picture=dsg_data.get("picture_url"),
+        name=identity.get("name", ""),
+        picture=identity.get("picture_url"),
         global_roles=global_roles,
-        datasets=ds_roles,
-        datasets_ignore_tos=ds_roles_ignore_tos,
-        missing_tos=dsg_data.get("missing_tos", []),
-        groups=set(dsg_data.get("groups", [])),
+        datasets=dataset_roles,
+        datasets_ignore_tos=dataset_roles_ignore_tos,
+        groups=set(identity.get("groups") or []),
     )
 
 
 def _fetch_dsg_user(resolved_token: str) -> User:
-    """Fetch + map the DatasetGateway user for a token and refresh the cache.
-
-    Always hits DSG (no cache read) and stores the result under
-    ``resolved_token``. Callers decide when a fresh read is warranted.
-    """
-    try:
-        resp = httpx.get(
-            f"{DSG_URL}/api/v1/user/cache?service=clio",
-            headers={"Authorization": f"Bearer {resolved_token}"},
-            timeout=10,
-        )
-    except httpx.RequestError as e:
-        print(f"DatasetGateway request failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            detail="Auth service unavailable",
-        )
-
-    if resp.status_code != 200:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Could not validate credentials",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    user = _map_dsg_to_user(resp.json())
+    """Refresh the cached clio User from DSG native identity and one batch."""
+    identity = _fetch_dsg_identity(resolved_token)
+    dataset_ids = list(datasets.cache)
+    entries = [_dsg_entry_for_dataset_id(dataset_id) for dataset_id in dataset_ids]
+    decisions = _fetch_dsg_decisions(resolved_token, entries)
+    user = _build_user(identity, dataset_ids, decisions)
     user.token = resolved_token
     _dsg_user_cache[resolved_token] = (time.time(), user)
     return user
@@ -380,8 +448,8 @@ def _get_user_from_dsg(request: Request, token: str) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    # /profile drives browser redirects after TOS acceptance. Force a fresh DSG
-    # read there so users do not loop on stale missing_tos state.
+    # /profile drives browser returns after TOS acceptance. Force a fresh DSG
+    # read there so users do not loop on stale authorization state.
     force_refresh = request.url.path == "/profile"
 
     cached = _dsg_user_cache.get(resolved_token)
@@ -415,7 +483,7 @@ def _dsg_group_members(user: User, groups: Set[str]) -> Set[str]:
             continue
         try:
             resp = httpx.get(
-                f"{DSG_URL}/api/v1/groups/{group_name}/members",
+                f"{DSG_URL}/api/dsg/v1/groups/{group_name}/members",
                 headers={"Authorization": f"Bearer {user.token}"},
                 timeout=10,
             )

@@ -1,202 +1,105 @@
-# Clio (clio-store) Integration with DatasetGateway
+# Clio (clio-store) integration with DatasetGateway
 
-Clio (clio-store) is a FastAPI service managing neuroscience annotations,
-dataset metadata, saved searches, and body annotations. It stores data in
-Firestore, BigQuery, and GCS.
+clio-store delegates authentication and authorization to DatasetGateway (DSG)
+when `DSG_URL` is configured. Firestore remains the source of Clio dataset
+metadata, including every exact Firestore id and its local `public` flag.
 
-This document describes how clio-store integrates with DatasetGateway for
-authentication and authorization.
+## Native authorization adapter
 
----
+For a new or expired token, clio-store resolves the token from the Bearer
+header, `dsg_token` cookie, or `dsg_token` query parameter (in that order),
+then performs two native DSG calls:
 
-## How it works
+1. `GET {DSG_URL}/api/dsg/v1/user` obtains the identity, admin flag, and
+   groups. Dedicated service-account identities have no email and are rejected
+   with 401 because Clio annotation ownership is email-based.
+2. `POST {DSG_URL}/api/dsg/v1/authorize` submits one `service: "clio"` batch
+   for every id in the Firestore `DatasetCache`.
 
-When the `DSG_URL` environment variable is set, clio-store delegates all
-user authentication and authorization to DatasetGateway. The flow is:
+Each Firestore id is the Clio authorization decision unit. An id with a
+nonempty first-colon split is sent as DSG `name` plus `version`; for example,
+`fish2:v0.6` becomes `name=fish2`, `version=v0.6`. The remaining text after
+the first colon is the version, so `a:b:c` uses version `b:c`. Degenerate
+values such as `a:` and `:v1` are sent unsplit as the name. No branch is sent.
 
-1. A request arrives at clio-store with a token (via `Authorization:
-   Bearer` header, `dsg_token` cookie, or `?dsg_token=` query parameter)
-2. clio-store calls `GET {DSG_URL}/api/v1/user/cache` with that token
-3. DatasetGateway validates the token and returns the user's identity,
-   groups, and permissions
-4. clio-store maps the DatasetGateway response to its internal `User` model
-   and proceeds with the request
+The adapter verifies that each response entry echoes the submitted `(name,
+version)` at the same index. A length or correlation mismatch fails the whole
+refresh rather than associating a decision with the wrong Firestore id.
 
-When `DSG_URL` is not set, clio-store uses its legacy auth path (FlyEM
-JWT / Google OAuth2 token validation with Firestore `clio_users`).
+Native DSG roles map to Clio's preserved `User` interface:
 
----
+| Native role | Clio role |
+|---|---|
+| `view` | `clio_general` |
+| `edit` | `clio_write` |
+| `admin` | `dataset_admin` |
+| `manage` | no additional role (it already covers edit and view) |
+| another role, such as `annotation_editor` | preserved verbatim |
 
-## Permission mapping
+`allow` decisions populate both normal and ignore-TOS dataset roles.
+`tos_required` decisions populate only ignore-TOS roles, so the dataset remains
+listed but data routes deny it until acceptance. A decision's `tos_url` is
+never cached. `deny` and `service_eval` produce no dataset role. DSG admins
+(and the configured `OWNER`) short-circuit every Clio authorization method,
+including for a Firestore dataset that DSG does not recognize.
 
-DatasetGateway uses `view` and `edit` permissions per dataset. clio-store
-uses its own role names internally. The mapping is:
+## Caching and acceptance refresh
 
-| DatasetGateway | clio-store equivalent | Notes |
-|---|---|---|
-| `admin: true` | `global_roles: {"admin"}` | Full system admin, bypasses all checks |
-| `permissions_v2[ds]` includes `"view"` | `datasets[ds]` includes `"clio_general"` | Read + write own annotations |
-| `permissions_v2[ds]` includes `"edit"` | `datasets[ds]` includes `"clio_write"` | Write others' annotations |
-| `datasets_admin` includes `ds` | `datasets[ds]` includes `"dataset_admin"` | Per-dataset admin (can delete annotations) |
-| `groups` list | `groups` set | Used for annotation visibility scoping |
+`_dsg_user_cache` remains token-keyed with a 600-second TTL. The cached `User`
+records pending-TOS visibility versus access; this is intentional. A browser
+return from TOS reloads the app, and `/profile` always force-refreshes identity
+and decisions, then evicts other cached tokens for that email. The next data
+request with a sibling long-lived token consequently re-reads DSG immediately.
+Data-route denial retains its one `refresh_user()` retry. Acceptance performed
+elsewhere is TTL-bounded like any other grant change.
 
-During migration (import), the reverse mapping also handles `clio_read`:
-both `clio_read` and `clio_general` per-dataset roles map to a `view`
-grant in DatasetGateway.
+`_dsg_group_members_cache` is also 600 seconds. Annotation visibility queries
+use `GET {DSG_URL}/api/dsg/v1/groups/{name}/members`; non-admin users may ask
+only about groups included in their native identity.
 
-clio-store's legacy `clio_general` as a *global* role (meaning access to
-all datasets) has no DatasetGateway equivalent. Per-dataset permissions plus
-the Firestore `public` flag cover all existing behavior. Admin users
-bypass all checks regardless.
+## Browser routes
 
----
+The top-level browser routes are mounted only when `DSG_URL` is configured:
 
-## The `public` flag
+| Route | Purpose |
+|---|---|
+| `GET /login?redirect=...` | 302 to the unchanged DSG auth endpoint with only `redirect`; obsolete `dataset` and `service` query parameters are ignored. |
+| `GET /profile` | Cookie-authenticated identity response: `{email, name, picture, global_roles, datasets, groups, dsg_url}`. It is force-fresh. |
+| `GET /dataset-access?dataset=...&redirect=...` | Cookie-authenticated, stateless, force-fresh decision for a selected Firestore dataset. |
+| `GET` or `POST /logout` | Best-effort DSG logout, local cookie clearing, and redirect. |
 
-### What it does
+`/dataset-access` first reads the native identity. An admin receives access
+without an authorization call. Other users receive one authorize entry with
+the browser `redirect` sent as DSG's `return_url`. The result contains the
+original Firestore `dataset`, booleans `access` and `tos_required`, mapped
+roles, and only (when required) the opaque DSG `tos_url`. The endpoint does
+not read or write the `User` cache and never returns canonical DSG identifiers.
 
-Some datasets in clio-store are marked `public: true` in their Firestore
-`clio_datasets` document. When a dataset is public, any authenticated
-user can read it and write their own annotations, even without explicit
-DatasetGateway permissions.
+The unchanged authentication endpoints are DSG authorize for browser login,
+long-lived-token proxying at `/v2/server/token`, and DSG logout.
 
-This is checked by three methods on clio-store's `User` model:
-- `can_read(dataset)` -- returns `True` if the dataset is public
-- `can_write_own(dataset)` -- returns `True` if the dataset is public
-- `has_role("clio_general", dataset)` -- returns `True` if the dataset
-  is public
+## Local public flag
 
-### Where the flag lives
+Firestore's dataset `public: true` flag is still an independent OR-source of
+read access, write-own access, and dataset-list visibility. It stays in
+Firestore and is refreshed by `DatasetCache`; native DSG `allow` is an
+additional access source, not a replacement for local public metadata.
 
-The `public` flag is part of dataset metadata in Firestore's
-`clio_datasets` collection, alongside DVID URLs, neuroglancer config,
-layer definitions, and other dataset configuration. It is NOT stored in
-DatasetGateway.
+## Rollout
 
-clio-store's `DatasetCache` reads all dataset metadata (including
-`public`) from Firestore on startup and refreshes every 10 minutes.
-This continues to work unchanged with DatasetGateway auth enabled.
-
-### Two sources of access decisions
-
-With DatasetGateway integration, a user's access to a dataset is determined
-by two sources:
-
-1. **DatasetGateway permissions** -- explicit `view`/`edit` grants or group
-   permissions, returned in `permissions_v2`
-2. **Firestore `public` flag** -- if `true`, all authenticated users get
-   implicit read + write-own access
-
-This means:
-- A user with no DatasetGateway permissions can still access a public
-  dataset
-- To fully restrict a dataset, an admin must both remove DatasetGateway
-  permissions AND set `public: false` in Firestore
-- The `public` flag is a property of the dataset metadata, not an auth
-  record -- it lives with DVID URLs, layers, and neuroglancer config
-
-### Migration consideration
-
-During migration from Firestore auth to DatasetGateway, public datasets
-are handled by creating a `GroupDatasetPermission` granting `view` to
-the `user` group (which all DatasetGateway users belong to). This mirrors
-the Firestore `public` behavior in DatasetGateway's permission system.
-However, the Firestore `public` flag still governs clio-store's
-`can_write_own()` behavior independently.
-
----
-
-## Group members
-
-clio-store uses groups to scope annotation visibility. When a user
-queries annotations, they see annotations from users who share at least
-one group with them. This is implemented by `annotations_v2.py` and
-`annotations_v3.py` calling `group_members(user, groups)`.
-
-With DatasetGateway, group membership is fetched from
-`GET {DSG_URL}/api/v1/groups/{group_name}/members`, which returns a list
-of email addresses. Results are cached for 10 minutes.
-
----
-
-## User management endpoints
-
-When `DSG_URL` is set, clio-store's user management endpoints
-(`GET/POST/DELETE /v2/users`) return HTTP 501 with a message directing
-admins to DatasetGateway. All user and role management happens through
-DatasetGateway's web UI or Django admin panel.
-
----
-
-## Token generation
-
-When `DSG_URL` is set, `POST /v2/server/token` proxies to DatasetGateway's
-`GET /api/v1/long_lived_token` endpoint, returning a DatasetGateway API
-key instead of a FlyEM JWT. The DSG endpoint is idempotent: on first call
-it creates the user's stable long-lived `APIKey` row (description
-`Default long-lived API token`, no expiry) and on every subsequent call
-it returns that same token. This stability is important — users paste
-the displayed token into scripts and configuration files, so it must not
-change on browser refresh, localStorage miss, or frontend reload.
-
-Existing clients that call this endpoint continue to work — they
-receive a `dsg_token` that works across all DatasetGateway-integrated
-services.
-
----
+Before deployment, register service `clio` in DSG with linear version
+evaluation and register every served Firestore id: bare ids need a matching
+dataset or name alias, while colon ids need the dataset, version anchor, and
+any necessary version alias. Deploy clio-store (Cloud Run) before
+clio_website (the clio-dev bucket). Validate an admin and a granted non-admin
+can list and read `fish2:v0.6`, a DSG-public dataset is visible without a
+grant, a pending-TOS selection follows its opaque URL and opens after return,
+and annotation group visibility remains intact.
 
 ## Configuration
 
 | Environment variable | Required | Description |
 |---|---|---|
-| `DSG_URL` | Yes | Base URL of the DatasetGateway server (e.g., `https://dsg.example.org`). When unset, clio-store uses legacy Firestore auth. |
-| `AUTH_COOKIE_DOMAIN` | Recommended | Set on DatasetGateway to share the `dsg_token` cookie across subdomains (e.g., `.janelia.org`). When configured, users log in once and are authenticated across clio-store, CAVE, Neuroglancer, etc. |
-
-All other clio-store configuration (Firestore collections, DVID URLs,
-etc.) remains unchanged.
-
----
-
-## Migration from Firestore auth
-
-### Steps
-
-1. **Export** Firestore auth data using `scripts/export_auth.py` in the
-   clio-store repo:
-   ```bash
-   python scripts/export_auth.py exported_auth.json
-   ```
-   This reads `clio_users` and `clio_datasets` from Firestore and writes
-   a JSON file.
-
-2. **Import** into DatasetGateway using the management command:
-   ```bash
-   cd dsg
-   python manage.py import_clio_auth exported_auth.json
-   ```
-   This creates User, Dataset, Grant, Group, and UserGroup records. Use
-   `--dry-run` to preview without writing.
-
-3. **Deploy** clio-store with `DSG_URL` set to the DatasetGateway URL.
-
-4. Firestore `clio_users` becomes legacy data. It can be deleted once
-   migration is verified.
-
-### What the import creates
-
-For each Firestore user:
-- A `User` record (email, name, admin flag, active status)
-- `Grant` records mapping clio-store roles to DatasetGateway permissions
-- `UserGroup` memberships from the user's groups
-
-For each Firestore dataset:
-- A `Dataset` record
-- If `public: true`, a `GroupDatasetPermission` granting `view` to the
-  `user` group
-
-### What stays in Firestore
-
-- All dataset metadata (`clio_datasets`): DVID URLs, layers,
-  neuroglancer config, the `public` flag, etc.
-- All annotation data, saved searches, key-value stores, etc.
-- Only `clio_users` (user auth/roles) moves to DatasetGateway
+| `DSG_URL` | Yes | DatasetGateway base URL. |
+| `OWNER` | Yes | Email granted Clio's global admin short-circuit. |
+| `AUTH_COOKIE_DOMAIN` | Recommended on DSG | Shared `dsg_token` cookie domain, such as `.janelia.org`. |

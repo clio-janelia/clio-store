@@ -3,21 +3,19 @@
 # hardwire annotation_type to "neurons" and map to DVID keyvalue or 
 # neuronjson instance "segmentation_annotations".
 
-import time
+from dataclasses import dataclass
 import json
+import re
 import requests
 
-from fastapi import status, APIRouter, Depends, HTTPException, Response
+from fastapi import status, APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 
-from enum import Enum
-from typing import Dict, List, Any, Set, Union, Optional
-from pydantic import BaseModel, ValidationError
+from typing import Dict, List, Union
 
 from config import *
-from dependencies import get_dataset, get_user, User, version_str_to_int
-from stores import firestore, cache
-from google.cloud import firestore as google_firestore
+from dependencies import get_dataset, get_user, User
+from stores import cache
 
 router = APIRouter()
 
@@ -26,10 +24,31 @@ MAX_ANNOTATIONS_RETURNED = 1000000
 
 set_fields = set(['tags'])
 
-def dvid_base_url(dataset: str, version: str = "") -> str:
-    """Return the DVID base URL (e.g., https://dvid.org/api/node/uuid) """
 
-    # Convert to DVID UUID unless this doesn't have a 'v' prefix
+@dataclass(frozen=True)
+class DVIDTarget:
+    server: str
+    uuid: str
+
+    @property
+    def base_url(self) -> str:
+        return f"{self.server}/api/node/{self.uuid}"
+
+    @property
+    def broker_url(self) -> str:
+        return f"{self.server}/api/auth/clio/{self.uuid}"
+
+
+def resolve_dvid_target(dataset: str, version: str = "") -> DVIDTarget:
+    """Resolve and validate the one DVID node used by broker and data calls."""
+
+    if not isinstance(version, str):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad DVID UUID {version!r} used for dataset {dataset}",
+        )
+
+    # Convert a Clio version tag to its DVID UUID. Bare values are DVID UUIDs.
     if version.startswith('v'):
         tag_to_uuid = cache.get_value(
             collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
@@ -44,26 +63,117 @@ def dvid_base_url(dataset: str, version: str = "") -> str:
                 )
             version = tag_to_uuid[version]
 
-    # Default to DVID server HEAD if no version indicated
     dataset_cache = get_dataset(dataset)
     if len(version) == 0:
         version = dataset_cache.uuid
 
-    # Construct the base url based on the dvid server for the dataset
     if dataset_cache.dvid is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, 
             detail=f"DVID server for dataset {dataset} not found"
         )
-    return f"{dataset_cache.dvid}/api/node/{version}"
+    if not isinstance(version, str) or re.fullmatch(r"[0-9a-fA-F]+", version) is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Bad DVID UUID {version!r} used for dataset {dataset}",
+        )
+    return DVIDTarget(server=dataset_cache.dvid.rstrip('/'), uuid=version)
 
 
-def dvid_request(url: str, payload=None):
+def _allowed_broker_return_url(request: Request):
+    origin = request.headers.get("origin")
+    if not origin or ALLOWED_ORIGINS == "*":
+        return None
+    allowed = {value.strip() for value in ALLOWED_ORIGINS.split(',') if value.strip()}
+    return origin if origin in allowed else None
+
+
+def _broker_error(detail: str = "DVID authorization broker unavailable"):
+    return HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=detail)
+
+
+def dvid_capability(
+    target: DVIDTarget, user: User, permission: str, request: Request,
+) -> str:
+    """Request one node- and permission-bound capability from DVID."""
+    if permission not in ("view", "edit"):
+        raise ValueError(f"unsupported DVID permission {permission!r}")
+    if not user.token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    payload = {"permission": permission}
+    return_url = _allowed_broker_return_url(request)
+    if return_url is not None:
+        payload["return_url"] = return_url
+    try:
+        response = requests.post(
+            target.broker_url,
+            json=payload,
+            headers={"Authorization": f"Bearer {user.token}"},
+            timeout=10,
+        )
+    except requests.RequestException as error:
+        print(f"DVID authorization broker request failed: {error}")
+        raise _broker_error()
+
+    if response.status_code == status.HTTP_401_UNAUTHORIZED:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Could not validate credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    if response.status_code == status.HTTP_400_BAD_REQUEST:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="DVID target could not be uniquely resolved",
+        )
+    if response.status_code != status.HTTP_200_OK:
+        raise _broker_error()
+
+    try:
+        body = response.json()
+    except (ValueError, requests.RequestException) as error:
+        print(f"Invalid DVID authorization broker response: {error}")
+        raise _broker_error()
+    if not isinstance(body, dict):
+        raise _broker_error()
+
+    decision = body.get("decision")
+    if decision == "allow":
+        capability = body.get("capability")
+        if not isinstance(capability, str) or not capability:
+            raise _broker_error()
+        return capability
+    if decision == "tos_required":
+        tos_url = body.get("tos_url")
+        if not isinstance(tos_url, str) or not tos_url:
+            raise _broker_error()
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"decision": "tos_required", "tos_url": tos_url},
+        )
+    if decision == "deny":
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="No permission to access annotations on the resolved DVID node",
+        )
+    raise _broker_error()
+
+
+def _capability_headers(capability: str):
+    return {"Authorization": f"DVID-Capability {capability}"}
+
+
+def dvid_request(url: str, capability: str, payload=None):
     print(f"Performing dvid GET {url} with payload of {len(payload) if payload else 'no'} bytes")
     if payload:
-        r = requests.get(url, data=payload)
+        r = requests.get(url, data=payload, headers=_capability_headers(capability))
     else:
-        r = requests.get(url)
+        r = requests.get(url, headers=_capability_headers(capability))
     if r.status_code != 200:
         raise HTTPException(
             status_code=r.status_code, 
@@ -71,12 +181,12 @@ def dvid_request(url: str, payload=None):
         )
     return r.content
 
-async def dvid_streaming_request(url: str, payload=None):
+async def dvid_streaming_request(url: str, capability: str, payload=None):
     print(f"Performing dvid streaming GET {url} with payload of {len(payload) if payload else 'no'} bytes")
     if payload:
-        r = requests.get(url, data=payload)
+        r = requests.get(url, data=payload, headers=_capability_headers(capability))
     else:
-        r = requests.get(url)
+        r = requests.get(url, headers=_capability_headers(capability))
     if r.status_code != 200:
         raise HTTPException(
             status_code=r.status_code, 
@@ -85,56 +195,37 @@ async def dvid_streaming_request(url: str, payload=None):
     yield r.content
 
 
-def dvid_request_json(url: str, payload=None):
-    content = dvid_request(url, payload)
+def dvid_request_json(url: str, capability: str, payload=None):
+    content = dvid_request(url, capability, payload)
     annot_json_str = str(content.decode()) 
     print(f"returned JSON: {annot_json_str}")
     return json.loads(annot_json_str)
 
-def can_read(func):
-    def wrapper(self, *args, **kwargs):
-        dataset = args[0]
-        user = kwargs['user']
-        if not user.can_read(dataset):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail=f"no permission to read annotations on dataset {dataset}"
-            )
-        return func(self, *args, **kwargs)
-    return wrapper
+def require_dataset_read(dataset: str, user: User):
+    if not user.can_read(dataset):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"No permission to read annotation metadata on dataset {dataset}",
+        )
 
 
-def can_write(func):
-    def wrapper(self, *args, **kwargs):
-        dataset = args[0]
-        user = kwargs['user']
-        if not user.can_write_others(dataset):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, 
-                detail=f"no permission to write annotations on dataset {dataset}"
-            )
-        return func(self, *args, **kwargs)
-    return wrapper
-
-
-@can_read
 @router.get('/{dataset}/neurons/fields', response_model=List)
 @router.get('/{dataset}/neurons/fields/', response_model=List, include_in_schema=False)
-def get_fields(dataset: str, user: User = Depends(get_user)):
+def get_fields(dataset: str, request: Request, user: User = Depends(get_user)):
     """ Returns all fields within annotations for the given scope.
         
     Returns:
 
         A JSON list of the fields present in at least one annotation.
     """
-    base_url = dvid_base_url(dataset, "")
-    url = f"{base_url}/segmentation_annotations/fields"
+    target = resolve_dvid_target(dataset)
+    capability = dvid_capability(target, user, "view", request)
+    url = f"{target.base_url}/segmentation_annotations/fields"
 
-    responseBytes = dvid_request(url)
+    responseBytes = dvid_request(url, capability)
     return Response(content=responseBytes, media_type="application/json")
 
 
-@can_read
 @router.get('/{dataset}/neurons/versions', response_model=dict)
 @router.get('/{dataset}/neurons/versions/', response_model=dict, include_in_schema=False)
 def get_versions(dataset: str, user: User = Depends(get_user)):
@@ -144,6 +235,7 @@ def get_versions(dataset: str, user: User = Depends(get_user)):
 
         A dict with tag keys and corresponding dvid UUIDs as value.
     """
+    require_dataset_read(dataset, user)
     tag_to_uuid = cache.get_value(
         collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
         document='metadata', 
@@ -157,7 +249,6 @@ def get_versions(dataset: str, user: User = Depends(get_user)):
     return tag_to_uuid
 
 
-@can_read
 @router.get('/{dataset}/neurons/head_tag', response_model=str)
 @router.get('/{dataset}/neurons/head_tag/', response_model=str, include_in_schema=False)
 def get_head_tag(dataset: str, user: User = Depends(get_user)):
@@ -167,6 +258,7 @@ def get_head_tag(dataset: str, user: User = Depends(get_user)):
 
         A string of the HEAD version tag, e.g., "v0.3.33"
     """
+    require_dataset_read(dataset, user)
     head_tag = cache.get_value(
         collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
         document='metadata', 
@@ -180,7 +272,6 @@ def get_head_tag(dataset: str, user: User = Depends(get_user)):
     return head_tag
 
 
-@can_read
 @router.get('/{dataset}/neurons/head_uuid', response_model=str)
 @router.get('/{dataset}/neurons/head_uuid/', response_model=str, include_in_schema=False)
 def get_head_uuid(dataset: str, user: User = Depends(get_user)):
@@ -190,6 +281,7 @@ def get_head_uuid(dataset: str, user: User = Depends(get_user)):
 
         A string of the HEAD version uuid, e.g., "74ea83"
     """
+    require_dataset_read(dataset, user)
     head_uuid = cache.get_value(
         collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
         document='metadata', 
@@ -203,7 +295,6 @@ def get_head_uuid(dataset: str, user: User = Depends(get_user)):
     return head_uuid
 
 
-@can_read
 @router.get('/{dataset}/neurons/tag_to_uuid/{tag}', response_model=str)
 @router.get('/{dataset}/neurons/tag_to_uuid/{tag}/', response_model=str, include_in_schema=False)
 def get_tag_to_uuid(dataset: str, tag: str, user: User = Depends(get_user)):
@@ -213,6 +304,7 @@ def get_tag_to_uuid(dataset: str, tag: str, user: User = Depends(get_user)):
 
         A string of the uuid corresponding to the tag, e.g., "74ea83"
     """
+    require_dataset_read(dataset, user)
     tag_to_uuid = cache.get_value(
         collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
         document='metadata', 
@@ -231,7 +323,6 @@ def get_tag_to_uuid(dataset: str, tag: str, user: User = Depends(get_user)):
     return tag_to_uuid[tag]
 
 
-@can_read
 @router.get('/{dataset}/neurons/uuid_to_tag/{uuid}', response_model=str)
 @router.get('/{dataset}/neurons/uuid_to_tag/{uuid}/', response_model=str, include_in_schema=False)
 def get_uuid_to_tag(dataset: str, uuid: str, user: User = Depends(get_user)):
@@ -241,6 +332,7 @@ def get_uuid_to_tag(dataset: str, uuid: str, user: User = Depends(get_user)):
 
         A string of the tag corresponding to the uuid, e.g., "v0.3.32"
     """
+    require_dataset_read(dataset, user)
     uuid_to_tag = cache.get_value(
         collection_path=[CLIO_ANNOTATIONS_GLOBAL], 
         document='metadata', 
@@ -272,11 +364,11 @@ def get_uuid_to_tag(dataset: str, uuid: str, user: User = Depends(get_user)):
         )
     return found_tag
 
-@can_read
 @router.get('/{dataset}/neurons/all')
 @router.get('/{dataset}/neurons/all/', include_in_schema=False)
-def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTATIONS_RETURNED, 
-                        show: str = None, user: User = Depends(get_user)):
+def get_all_annotations(dataset: str, request: Request, cursor: str = None,
+                        size: int = MAX_ANNOTATIONS_RETURNED, show: str = None,
+                        user: User = Depends(get_user)):
     """ Returns all current neuron annotations for the given dataset and annotation type.
 
     Query strings:
@@ -295,8 +387,9 @@ def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTA
         A JSON list of the annotations.
 
     """
-    base_url = dvid_base_url(dataset, "")
-    url = f"{base_url}/segmentation_annotations/all"
+    target = resolve_dvid_target(dataset)
+    capability = dvid_capability(target, user, "view", request)
+    url = f"{target.base_url}/segmentation_annotations/all"
     query_strings = []
     if show:
         query_strings.append(f"show={show}")
@@ -305,29 +398,15 @@ def get_all_annotations(dataset: str, cursor: str = None, size: int = MAX_ANNOTA
     if len(query_strings) > 0:
         url = url + "?" + "&".join(query_strings)
 
-    return StreamingResponse(dvid_streaming_request(url), media_type="application/json")
+    return StreamingResponse(
+        dvid_streaming_request(url, capability), media_type="application/json",
+    )
 
 
-def get_dvid_annotations(dataset: str, version: str, ids: List[int]) -> bytes:
-    """ Returns all current neuron annotations for the given dataset at the Clio version
-        
-    Returns:
-
-        A JSON list of the annotations.
-    """
-    base_url = dvid_base_url(dataset, version)
-    url = f"{base_url}/segmentation_annotations/keyvalues?json=true"
-
-    jsonList = json.dumps(ids)
-    responseBytes = dvid_request(url, jsonList)
-        
-    return Response(content=responseBytes, media_type="application/json")
-
-
-@can_read
 @router.get('/{dataset}/neurons/id-number/{id}', response_model=List)
 @router.get('/{dataset}/neurons/id-number/{id}/', response_model=List, include_in_schema=False)
-def get_annotations(dataset: str, id: str, version: str = "", show: str = None, user: User = Depends(get_user)):
+def get_annotations(dataset: str, id: str, request: Request, version: str = "",
+                    show: str = None, user: User = Depends(get_user)):
     """ Returns the neuron annotations associated with the given id list separated by commas.
         
     Query strings:
@@ -350,38 +429,40 @@ def get_annotations(dataset: str, id: str, version: str = "", show: str = None, 
         ids = [int(id)]
     print(ids)
 
-    base_url = dvid_base_url(dataset, version)
-    url = f"{base_url}/segmentation_annotations/keyvalues?json=true"
+    target = resolve_dvid_target(dataset, version)
+    capability = dvid_capability(target, user, "view", request)
+    url = f"{target.base_url}/segmentation_annotations/keyvalues?json=true"
     if show:
         url += f"&show={show}"
 
     jsonList = json.dumps(ids)
-    annotationDict = dvid_request_json(url, jsonList)
+    annotationDict = dvid_request_json(url, capability, jsonList)
 
     return list(annotationDict.values())
 
-@can_write
 @router.delete('/{dataset}/neurons/id-number/{id}')
 @router.delete('/{dataset}/neurons/id-number/{id}/', include_in_schema=False)
-def delete_annotations(dataset: str, id: str, user: User = Depends(get_user)):
+def delete_annotations(dataset: str, id: str, request: Request,
+                       user: User = Depends(get_user)):
     """ Deletes the neuron annotation associated with the given id (requires permission).
         
     """
-    base_url = dvid_base_url(dataset)
-    url = f"{base_url}/segmentation_annotations/key/{id}"
+    target = resolve_dvid_target(dataset)
+    capability = dvid_capability(target, user, "edit", request)
+    url = f"{target.base_url}/segmentation_annotations/key/{id}"
 
-    r = requests.delete(url)
+    r = requests.delete(url, headers=_capability_headers(capability))
     if r.status_code != 200:
         raise HTTPException(
             status_code=r.status_code, 
             detail=f"Error in delete bodyid {id}, status {r.status_code}, {url}: {r.content}"
         )
 
-@can_read
 @router.post('/{dataset}/neurons/query', response_model=List)
 @router.post('/{dataset}/neurons/query/', response_model=List, include_in_schema=False)
-def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str = "",
-                    show: str = "", onlyid: bool = False, user: User = Depends(get_user)):
+def query_annotations(dataset: str, query: Union[List[Dict], Dict], request: Request,
+                      version: str = "", show: str = "", onlyid: bool = False,
+                      user: User = Depends(get_user)):
     """ Executes a query on the annotations using supplied JSON.
 
     The JSON query format uses field names as the keys, and desired values.
@@ -409,8 +490,9 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
 
         A JSON list of objects.
     """
-    base_url = dvid_base_url(dataset, version)
-    url = f"{base_url}/segmentation_annotations/query"
+    target = resolve_dvid_target(dataset, version)
+    capability = dvid_capability(target, user, "view", request)
+    url = f"{target.base_url}/segmentation_annotations/query"
 
     querystr = []
     if show != "":
@@ -420,14 +502,15 @@ def get_annotations(dataset: str, query: Union[List[Dict], Dict], version: str =
     if len(querystr) > 0:
         url += '?' + '&'.join(querystr)
 
-    r = requests.post(url, json = query)
+    r = requests.post(url, json=query, headers=_capability_headers(capability))
     if r.status_code != 200:
         raise HTTPException(status_code=r.status_code, detail=r.content) # make more robust depending on return
         
     return Response(content=r.content, media_type="application/json")
 
 
-def write_annotation(base_url, payload, user, designated_user, conditional, replace):
+def write_annotation(base_url, payload, user, designated_user, conditional,
+                     replace, capability):
     if "bodyid" not in payload:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, 
@@ -447,21 +530,20 @@ def write_annotation(base_url, payload, user, designated_user, conditional, repl
         querystr.append(f'u={user.email}')
     url += '?' + '&'.join(querystr)
         
-    r = requests.post(url, json=payload)
+    r = requests.post(url, json=payload, headers=_capability_headers(capability))
     if r.status_code != 200:
         raise HTTPException(
             status_code=r.status_code, 
-            detail=f"Error in writing bodyid {id}, status {r.status_code}, {url}: {r.content}"
+            detail=f"Error in writing bodyid {payload['bodyid']}, status {r.status_code}, {url}: {r.content}"
         )
 
-@can_write
 @router.put('/{dataset}/neurons')
 @router.post('/{dataset}/neurons')
 @router.put('/{dataset}/neurons/', include_in_schema=False)
 @router.post('/{dataset}/neurons/', include_in_schema=False)
-def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bool = False,
-                     conditional: str = "", version: str = "", designated_user: str = "",
-                     user: User = Depends(get_user)):
+def post_annotations(dataset: str, payload: Union[List[Dict], Dict], request: Request,
+                     replace: bool = False, conditional: str = "", version: str = "",
+                     designated_user: str = "", user: User = Depends(get_user)):
     """ Add either a single annotation object or a list of objects. All must be all in the 
         same dataset version.
 
@@ -478,11 +560,18 @@ def post_annotations(dataset: str, payload: Union[List[Dict], Dict], replace: bo
         designated_user (str): If supplied, the user field is set to this value instead of the 
             authenticated user.
     """
-    base_url = dvid_base_url(dataset, version)
-    print("base_url: {base_url}")
+    target = resolve_dvid_target(dataset, version)
+    capability = dvid_capability(target, user, "edit", request)
+    print(f"base_url: {target.base_url}")
 
     if isinstance(payload, dict):
-        write_annotation(base_url, payload, user, designated_user, conditional, replace)
+        write_annotation(
+            target.base_url, payload, user, designated_user, conditional,
+            replace, capability,
+        )
     else: # must be list
         for annotation in payload:
-            write_annotation(base_url, annotation, user, designated_user, conditional, replace)
+            write_annotation(
+                target.base_url, annotation, user, designated_user, conditional,
+                replace, capability,
+            )

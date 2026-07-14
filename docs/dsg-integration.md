@@ -40,8 +40,51 @@ Native DSG roles map to Clio's preserved `User` interface:
 `tos_required` decisions populate only ignore-TOS roles, so the dataset remains
 listed but data routes deny it until acceptance. A decision's `tos_url` is
 never cached. `deny` and `service_eval` produce no dataset role. DSG admins
-(and the configured `OWNER`) short-circuit every Clio authorization method,
-including for a Firestore dataset that DSG does not recognize.
+(and the configured `OWNER`) short-circuit the metadata-oriented Clio role
+methods, including for a Firestore dataset that DSG does not recognize.
+DVID-backed annotation data calls still use the node-scoped broker described
+below; DVID authenticates admins there before minting a capability without an
+ordinary alias-backed grant.
+
+## DVID-backed JSON annotations
+
+Every mounted `/v2/json-annotations` route that reads or mutates annotation
+data first resolves exactly one DVID target from the Firestore dataset metadata:
+
+- omitted version uses the configured head UUID;
+- a `v...` Clio tag uses the stored `tag_to_uuid` mapping;
+- a bare partial or full UUID must contain only hexadecimal characters.
+
+clio-store then sends the user's DSG Bearer token to
+`POST {dvid}/api/auth/clio/{uuid}` with `permission: "view"` for reads or
+`permission: "edit"` for writes. It does not send a caller-supplied branch,
+raw `VersionID`, dataset name, or service. DVID uniquely resolves the UUID,
+derives the root/branch/raw `VersionID`, authorizes it as `service=clio`, and
+returns an opaque, short-lived capability on allow. Ambiguous UUIDs and broker
+errors fail closed. The read-only neuronjson `POST /query` uses view scope;
+ordinary mutation POSTs require edit.
+
+There is one broker request per incoming Clio request, including a request that
+writes a list of annotations. Each corresponding data call carries only:
+
+```text
+Authorization: DVID-Capability <opaque>
+```
+
+The data call never receives the user's DSG token or `X-DVID-Internal`. A
+`tos_required` decision becomes HTTP 403 with only its opaque `tos_url`; deny
+also becomes 403, and malformed or unavailable broker responses fail closed.
+When `ALLOWED_ORIGINS` is an explicit comma-separated list, the request Origin
+is forwarded as `return_url` only if it is an exact member. No return URL is
+forwarded for wildcard CORS or an unlisted Origin.
+
+Metadata-only annotation routes (`versions`, `head_tag`, `head_uuid`, and the
+tag/UUID lookup routes) do not contact DVID. They enforce a real dataset-grain
+read check through the cached `User` interface. Data routes deliberately do not
+preempt the broker with that cache check, so a version-only grant can reach its
+eligible DVID node. `designated_user` and `u` remain application metadata, but
+DVID uses the principal bound into the capability as the security and audit
+actor.
 
 ## Caching and acceptance refresh
 
@@ -87,14 +130,25 @@ additional access source, not a replacement for local public metadata.
 
 ## Rollout
 
-Before deployment, register service `clio` in DSG with linear version
-evaluation and register every served Firestore id: bare ids need a matching
-dataset or name alias, while colon ids need the dataset, version anchor, and
-any necessary version alias. Deploy clio-store (Cloud Run) before
-clio_website (the clio-dev bucket). Validate an admin and a granted non-admin
-can list and read `fish2:v0.6`, a DSG-public dataset is visible without a
-grant, a pending-TOS selection follows its opaque URL and opens after return,
-and annotation group visibility remains intact.
+Deploy the DSG native core first. Ensure the existing `clio` service uses DAG
+version evaluation. Retain the Firestore-id aliases used by dataset listing and
+`/dataset-access`; additionally register each Clio-backed DVID root UUID as a
+name alias and add a `(root UUID, decimal VersionID)` alias for every published
+anchor. Inspect metadata listing for the known alphabetic-alias wart even when
+direct alias resolution succeeds.
+
+Configure the capability signing secret on every DVID process involved in
+broker minting or annotation serving, keep top-level DVID `enforce = "dsg"`,
+and deploy DVID before clio-store. Secret TTL, skew, and active/previous-key
+rotation are documented in DVID's DSG authorization guide. No Firestore `dvid`
+URL, nginx, dual-horizon DNS, or `X-DVID-Internal` change is required; the
+legacy internal-header path remains available to other clients but is not
+Clio's authorization proof. No clio_website change is required for this slice.
+
+Validate dataset- and version-grain users across same- and cross-branch nodes,
+read/edit separation, the read-only query POST, TOS acceptance and retry,
+deny/admin behavior, write attribution, tampering, expiry, and cross-node
+capability misuse. Also verify metadata-only route denial and inspect aliases.
 
 ## Configuration
 

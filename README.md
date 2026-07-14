@@ -142,6 +142,11 @@ clio-store delegates all authentication and authorization to DatasetGateway.
 - Per-dataset roles map to DatasetGateway permissions: `view` →
   `clio_general` (read + private annotations), `edit` → `clio_write`
   (cross-user write). Global `admin` enables user management.
+- DVID-backed `/v2/json-annotations` data routes obtain a short-lived,
+  node/permission-bound capability from the DVID `service=clio` broker. The
+  downstream data request carries that opaque capability rather than the DSG
+  token or `X-DVID-Internal`; metadata-only annotation routes retain real
+  dataset-grain checks.
 - Datasets marked `public=true` in Firestore grant `clio_general` access to
   all authenticated users.
 
@@ -339,4 +344,3 @@ object returned.
 Determine the roles granted to: the users:
 
 	$ curl -X GET -H "Content-Type: application/json" https://my-api-endpoint/roles
-

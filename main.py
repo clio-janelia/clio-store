@@ -2,12 +2,17 @@ from fastapi import Depends
 from fastapi.responses import HTMLResponse
 
 from config import DSG_URL
-from dependencies import get_user, app
+from dependencies import app, enforce_service_account_read_only, get_user
 from services import annotations_v3, annotations_v2, atlas, datasets, image_query, image_transfer, \
     kv, savedsearches, users, roles, neuprint, subvol_edit, pull_request, server, \
     json_annotations, json_annotations_vnc, volumes, site_reports
 
 # Wire in the API endpoints
+# Apply the service-account write guard before every subsequently registered
+# route dependency. Safe methods and unauthenticated routes retain their own
+# existing behavior.
+app.router.dependencies.append(Depends(enforce_service_account_read_only))
+
 # require user authorization for any of the actual data API calls
 # versions are explicitly "v2", etc, and there is a "test" for ephemeral mods during testing.
 app.include_router(annotations_v3.router, prefix="/test/annotations", dependencies=[Depends(get_user)], include_in_schema=False)
@@ -66,4 +71,3 @@ is built into the system, allowing selective read/write/metadata access to datas
     </ul>
     </html>
     """
-

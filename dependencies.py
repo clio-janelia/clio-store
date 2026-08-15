@@ -10,6 +10,7 @@ from config import *
 from stores import firestore
 
 import httpx
+from starlette.concurrency import run_in_threadpool
 
 # stores reference to global APP
 app = FastAPI()
@@ -168,6 +169,7 @@ class User(BaseModel):
     org: Optional[str]
     picture: Optional[str] = None  # profile image URL (e.g., Google avatar)
     disabled: Optional[bool] = False
+    service_account: bool = False
     global_roles: Optional[Set[str]] = set()
     datasets: Optional[Dict[str, Set[str]]] = {}
     datasets_ignore_tos: Optional[Dict[str, Set[str]]] = {}
@@ -318,8 +320,8 @@ def _fetch_dsg_identity(resolved_token: str) -> Dict[str, Any]:
     identity = resp.json()
     if not isinstance(identity, dict):
         raise _auth_service_error(ValueError("invalid native identity response"))
-    if identity.get("email") is None:
-        raise _credentials_error("Dedicated service accounts cannot use clio-store")
+    if identity.get("email") in (None, ""):
+        raise _credentials_error("DatasetGateway identity is missing an email address")
     return identity
 
 
@@ -362,7 +364,8 @@ def _build_user(
     """Build clio's stable User interface from native DSG identity and decisions."""
     global_roles = {"admin"} if identity.get("admin") else set()
     email = identity["email"]
-    if OWNER and email == OWNER:
+    service_account = bool(identity.get("service_account"))
+    if not service_account and OWNER and email == OWNER:
         global_roles.add("admin")
 
     dataset_roles: Dict[str, Set[str]] = {}
@@ -382,6 +385,7 @@ def _build_user(
         email=email,
         name=identity.get("name", ""),
         picture=identity.get("picture_url"),
+        service_account=service_account,
         global_roles=global_roles,
         datasets=dataset_roles,
         datasets_ignore_tos=dataset_roles_ignore_tos,
@@ -513,3 +517,28 @@ def get_user(current_user: User = Depends(get_user_from_token)):
     if current_user.disabled:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
+
+
+SERVICE_ACCOUNT_WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
+
+
+def _enforce_service_account_mutation(request: Request, token: str):
+    resolved_token = _resolve_token(request, token)
+    if not resolved_token:
+        return
+
+    current_user = _get_user_from_dsg(request, resolved_token)
+    if current_user.service_account:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Service accounts are read-only in clio-store",
+        )
+
+
+async def enforce_service_account_read_only(
+    request: Request, token: str = Depends(oauth2_scheme),
+):
+    """Reject every clio-store mutation made by a dedicated service account."""
+    if request.method not in SERVICE_ACCOUNT_WRITE_METHODS:
+        return
+    await run_in_threadpool(_enforce_service_account_mutation, request, token)

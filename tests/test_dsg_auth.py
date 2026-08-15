@@ -53,14 +53,17 @@ def _response(payload, status_code=200):
     return response
 
 
-def _identity(*, email="user@test.com", admin=False, groups=None, name="Test User"):
+def _identity(
+    *, email="user@test.com", admin=False, groups=None, name="Test User",
+    service_account=False,
+):
     return {
         "id": 1,
         "email": email,
         "name": name,
         "picture_url": "https://example.test/avatar.png",
         "admin": admin,
-        "service_account": False,
+        "service_account": service_account,
         "groups": groups or [],
     }
 
@@ -167,6 +170,19 @@ def test_build_user_honors_dsg_admin_and_owner_fallback():
     ).global_roles
 
 
+def test_build_user_preserves_service_account_without_owner_fallback():
+    entry = _dsg_entry_for_dataset_id("ds")
+    user = _build_user(
+        _identity(email="owner@test.com", service_account=True),
+        ["ds"],
+        [_decision(entry, roles=["view"])],
+    )
+
+    assert user.service_account is True
+    assert "admin" not in user.global_roles
+    assert user.can_read("ds")
+
+
 # ---------------------------------------------------------------------------
 # Native DSG requests
 # ---------------------------------------------------------------------------
@@ -181,14 +197,14 @@ def test_fetch_identity_uses_native_url_and_bearer_token():
     assert get.call_args.kwargs["headers"] == {"Authorization": "Bearer token-1"}
 
 
-def test_fetch_identity_rejects_dedicated_service_account():
-    identity = _identity(email=None)
-    identity["service_account"] = True
+@pytest.mark.parametrize("email", [None, ""])
+def test_fetch_identity_rejects_missing_email(email):
+    identity = _identity(email=email, service_account=True)
     with patch("dependencies.httpx.get", return_value=_response(identity)):
         with pytest.raises(Exception) as error:
             _fetch_dsg_identity("dedicated")
     assert error.value.status_code == 401
-    assert "Dedicated service accounts" in error.value.detail
+    assert "missing an email address" in error.value.detail
 
 
 def test_fetch_identity_maps_non_ok_to_401():
@@ -540,6 +556,22 @@ def test_dataset_access_owner_never_calls_authorize():
         ))
     assert response["access"] is True
     post.assert_not_called()
+
+
+def test_dataset_access_service_account_owner_still_uses_authorize():
+    request = _make_request(cookies={"dsg_token": "cookie"})
+    entry = _dsg_entry_for_dataset_id("firestore-only")
+    identity = _identity(email="owner@test.com", service_account=True)
+    with patch("dependencies.httpx.get", return_value=_response(identity)), patch(
+        "dependencies.httpx.post",
+        return_value=_response({"entries": [_decision(entry, decision="deny")]}),
+    ) as post:
+        response = asyncio.run(dataset_access(
+            request, "firestore-only", "https://clio.test/", None,
+        ))
+
+    assert response["access"] is False
+    post.assert_called_once()
 
 
 def test_dataset_access_requires_cookie_or_bearer():

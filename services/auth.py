@@ -70,7 +70,11 @@ async def dataset_access(
         raise HTTPException(status_code=401, detail="Could not validate credentials")
 
     identity = _fetch_dsg_identity(resolved_token)
-    is_admin = identity.get("admin") or (OWNER and identity.get("email") == OWNER)
+    is_admin = identity.get("admin") or (
+        not identity.get("service_account")
+        and OWNER
+        and identity.get("email") == OWNER
+    )
     if is_admin:
         return {
             "dataset": dataset,

@@ -10,7 +10,6 @@ Only registered when DSG_URL is set (see main.py).
 from typing import Optional
 from urllib.parse import urlencode
 
-import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
@@ -100,34 +99,14 @@ async def dataset_access(
 
 @router.get('/logout')
 @router.post('/logout')
-async def logout(request: Request, redirect: str = "/"):
-    """Invalidate the DSG session and redirect the browser.
+async def logout(redirect: str = "/"):
+    """Delegate browser logout and redirect validation to DatasetGateway.
 
-    DSG's /api/v1/logout returns a JSON blob rather than honoring a redirect,
-    which makes for ugly UX if we just 302 the browser there. Instead we:
-      1. best-effort call DSG /api/v1/logout server-side with the user's token
-         so the APIKey row is deleted from DSG's DB,
-      2. clear the dsg_token cookie ourselves (valid because the cookie is
-         Domain=.janelia.org and we're a .janelia.org subdomain),
-      3. redirect the browser to whatever URL the caller asked for.
+    DSG deletes the cookie-presented login token, clears the domain-wide
+    dsg_token cookie, validates the return URL, and redirects the browser.
     """
     if not DSG_URL:
         raise HTTPException(status_code=404)
 
-    token = request.cookies.get("dsg_token")
-    if token:
-        try:
-            httpx.get(
-                f"{DSG_URL}/api/v1/logout",
-                headers={"Authorization": f"Bearer {token}"},
-                timeout=5,
-            )
-        except httpx.RequestError:
-            # best-effort — we still want to clear the local cookie and redirect
-            pass
-
-    response = RedirectResponse(redirect, status_code=302)
-    # DSG sets the cookie with Domain=.janelia.org; we must echo the same
-    # domain when clearing or the browser keeps the cookie.
-    response.delete_cookie("dsg_token", domain=".janelia.org", path="/")
-    return response
+    target = f"{DSG_URL}/api/v1/logout?{urlencode({'redirect': redirect})}"
+    return RedirectResponse(target, status_code=302)

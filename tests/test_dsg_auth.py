@@ -27,7 +27,7 @@ from dependencies import (
     get_user,
     refresh_user,
 )
-from services.auth import dataset_access, login, logout, profile
+from services.auth import dataset_access, login, logout, profile, router as auth_router
 from services.datasets import get_dataset as get_dataset_route
 
 
@@ -616,7 +616,77 @@ def test_browser_routes_are_mounted_and_dataset_access_uses_cookie_credentials()
     assert access_response.headers["access-control-allow-credentials"] == "true"
 
 
-def test_logout_redirects():
-    response = asyncio.run(logout(_make_request()))
+def test_logout_default_redirect_delegates_to_dsg():
+    response = asyncio.run(logout())
+    target = urlsplit(response.headers["location"])
+
     assert response.status_code == 302
-    assert response.headers["location"] == "/"
+    assert (target.scheme, target.netloc, target.path) == (
+        "http", "dsg.test", "/api/v1/logout",
+    )
+    assert parse_qs(target.query) == {"redirect": ["/"]}
+
+
+@pytest.mark.parametrize("redirect", [
+    "https://evil-janelia.org/phishing",
+    "https://janelia.org.evil.test/phishing",
+    "//evil.janelia.org/phishing",
+])
+def test_logout_never_issues_an_untrusted_redirect_directly(redirect):
+    response = asyncio.run(logout(redirect=redirect))
+    target = urlsplit(response.headers["location"])
+
+    assert response.status_code == 302
+    assert response.headers["location"] != redirect
+    assert (target.scheme, target.netloc, target.path) == (
+        "http", "dsg.test", "/api/v1/logout",
+    )
+    assert parse_qs(target.query) == {"redirect": [redirect]}
+
+
+@pytest.mark.parametrize("redirect", [
+    "http://janelia.org/",
+    "https://clio.janelia.org/workspace?dataset=fish2:v0.6#body",
+])
+def test_logout_valid_janelia_redirects_flow_through_dsg(redirect):
+    response = asyncio.run(logout(redirect=redirect))
+    target = urlsplit(response.headers["location"])
+
+    assert response.status_code == 302
+    assert (target.scheme, target.netloc, target.path) == (
+        "http", "dsg.test", "/api/v1/logout",
+    )
+    assert parse_qs(target.query) == {"redirect": [redirect]}
+
+
+@pytest.mark.parametrize("method", ["GET", "POST"])
+def test_logout_methods_delegate_cookie_handling_to_dsg(method):
+    from fastapi import FastAPI
+
+    redirect = "https://clio.janelia.org/"
+    app = FastAPI()
+    app.include_router(auth_router)
+
+    async def request_logout():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport,
+            base_url="http://testserver",
+            follow_redirects=False,
+        ) as client:
+            return await client.request(
+                method,
+                "/logout",
+                params={"redirect": redirect},
+                headers={"Cookie": "dsg_token=browser-session"},
+            )
+
+    response = asyncio.run(request_logout())
+    target = urlsplit(response.headers["location"])
+
+    assert response.status_code == 302
+    assert (target.scheme, target.netloc, target.path) == (
+        "http", "dsg.test", "/api/v1/logout",
+    )
+    assert parse_qs(target.query) == {"redirect": [redirect]}
+    assert "set-cookie" not in response.headers
